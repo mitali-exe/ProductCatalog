@@ -1,0 +1,216 @@
+﻿@page "/product-catalog"
+@using Telerik.SvgIcons
+@using Telerik.Blazor.Components
+@using global::ProductCatalog.Models
+@using global::ProductCatalog.Services
+@inject ProductService ProductService
+
+<PageTitle>Product Catalog</PageTitle>
+
+<h1>Product Catalog</h1>
+
+<div class="mb-3">
+    <TelerikButton Icon="@SvgIcon.Plus" OnClick="@(() => IsWindowVisible = true)">Add New Product</TelerikButton>
+</div>
+
+<div class="filter-section">
+    <TelerikDropDownList Data="@Categories"
+                         TextField="Text"
+                         ValueField="Value"
+                         @bind-Value="SelectedCategory"
+                         DefaultText="All Categories"
+                         Width="220px" />
+
+    <TelerikNumericTextBox T="decimal?"
+                           @bind-Value="MinPrice"
+                           Min="0"
+                           Format="C"
+                           Width="150px"
+                           Placeholder="Min Price" />
+
+    <TelerikNumericTextBox T="decimal?"
+                           @bind-Value="MaxPrice"
+                           Min="0"
+                           Format="C"
+                           Width="150px"
+                           Placeholder="Max Price" />
+
+    <TelerikButton ThemeColor="Primary" OnClick="@ApplyFilters">
+        Apply Filters
+    </TelerikButton>
+
+    <TelerikButton OnClick="@ClearFilters" Icon="@SvgIcon.FilterClear">
+        Clear
+    </TelerikButton>
+</div>
+
+<TelerikGrid Data="@FilteredProducts"
+             Pageable="true"
+             Sortable="true"
+             PageSize="5"
+             Height="400px">
+    <GridColumns>
+        <GridColumn Field="@nameof(Product.Name)" Title="Product Name" Width="200px" />
+        <GridColumn Field="@nameof(Product.Category)" Title="Category" Width="150px" />
+        <GridColumn Field="@nameof(Product.Price)" Title="Price" Width="120px">
+            <Template Context="productObj">
+                @{
+                    var product = productObj as Product;
+                }
+                @if (product != null)
+                {
+                    @product.Price.ToString("C")
+                }
+            </Template>
+        </GridColumn>
+        <GridColumn Field="@nameof(Product.Stock)" Title="Stock" Width="100px" />
+        <GridColumn Title="Status" Width="150px">
+            <Template Context="productObj">
+                @{
+                    var product = productObj as Product;
+                }
+                @if (product != null)
+                {
+                    <span style="display:inline-block; padding:4px 8px; border-radius:12px; color:white; font-weight:bold; background-color:@(product.Stock > 0 ? "green" : "red");">
+                        @(product.Stock > 0 ? "In Stock" : "Out of Stock")
+                    </span>
+                }
+            </Template>
+        </GridColumn>
+        <GridColumn Title="Image" Width="100px">
+            <Template Context="productObj">
+                @{
+                    var product = productObj as Product;
+                }
+                @if (product != null)
+                {
+                    <img src="@ProductImages[product.Id]" style="height:50px; width:auto; border-radius:4px;" />
+                }
+            </Template>
+        </GridColumn>
+    </GridColumns>
+</TelerikGrid>
+
+<TelerikWindow @bind-Visible="@IsWindowVisible" Modal="true" Width="400px">
+    <WindowTitle>Add New Product</WindowTitle>
+    <WindowContent>
+        <div class="p-3">
+            <div class="mb-3">
+                <label>Name:</label>
+                <TelerikTextBox @bind-Value="NewProduct.Name" Width="100%" />
+            </div>
+            <div class="mb-3">
+                <label>Category:</label>
+                <TelerikDropDownList Data="@Categories" TextField="Text" ValueField="Value" @bind-Value="NewProduct.Category" Width="100%" />
+            </div>
+            <div class="mb-3">
+                <label>Price:</label>
+                <TelerikNumericTextBox @bind-Value="NewProduct.Price" Width="100%" />
+            </div>
+            <div class="mb-3">
+                <label>Stock:</label>
+                <TelerikNumericTextBox @bind-Value="NewProduct.Stock" Width="100%" />
+            </div>
+            <div class="mt-4">
+                <TelerikButton ThemeColor="Primary" OnClick="@SaveProduct">Save Product</TelerikButton>
+                <TelerikButton OnClick="@(() => IsWindowVisible = false)">Cancel</TelerikButton>
+            </div>
+        </div>
+    </WindowContent>
+</TelerikWindow>
+
+@code {
+    private List<Product> AllProducts = new();
+    private List<Product> FilteredProducts = new();
+    private List<CategoryOption> Categories = new();
+
+    private string? SelectedCategory { get; set; }
+    private decimal? MinPrice { get; set; }
+    private decimal? MaxPrice { get; set; }
+
+    private Dictionary<int, string> ProductImages = new(); // Store product images by ID
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Fetch products using ProductService
+        var data = await ProductService.GetProductsAsync();
+
+        if (data != null)
+        {
+            AllProducts = data;
+            Categories = AllProducts
+                .Select(p => p.Category)
+                .Distinct()
+                .OrderBy(c => c)
+                .Select(c => new CategoryOption { Text = c, Value = c })
+                .ToList();
+
+            FilteredProducts = new List<Product>(AllProducts);
+
+            // Fill in ProductImages with dummy image URLs
+            foreach (var product in AllProducts)
+            {
+                ProductImages[product.Id] = product.Thumbnail ?? "https://via.placeholder.com/150"; // Use the real image from the API
+            }
+        }
+    }
+
+
+    private void ApplyFilters()
+    {
+        // Filtering logic
+        FilteredProducts = AllProducts
+            .Where(p =>
+                (string.IsNullOrEmpty(SelectedCategory) || p.Category == SelectedCategory) &&
+                (!MinPrice.HasValue || p.Price >= MinPrice.Value) &&
+                (!MaxPrice.HasValue || p.Price <= MaxPrice.Value))
+            .ToList();
+
+        StateHasChanged(); // Refresh UI
+    }
+
+    private void ClearFilters()
+    {
+        // Reset filters
+        SelectedCategory = null;
+        MinPrice = null;
+        MaxPrice = null;
+
+        FilteredProducts = new List<Product>(AllProducts);
+
+        StateHasChanged(); // Refresh UI
+    }
+
+    public class CategoryOption
+    {
+        public string Text { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+    }
+
+    private bool IsWindowVisible { get; set; }
+    private Product NewProduct { get; set; } = new();
+
+    private void SaveProduct()
+    {
+        if (string.IsNullOrWhiteSpace(NewProduct.Name)) return;
+
+        NewProduct.Id = AllProducts.Max(p => p.Id) + 1; // Auto-increment ID
+
+        AllProducts.Add(NewProduct);
+
+        // Reset and close the window
+        NewProduct = new Product();
+        IsWindowVisible = false;
+
+        ApplyFilters(); // Re-apply filters to update the list
+    }
+}
+
+<style>
+    .filter-section {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+</style>

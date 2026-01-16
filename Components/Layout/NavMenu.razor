@@ -1,0 +1,172 @@
+﻿@using Telerik.Blazor.Components
+@using Telerik.Blazor.Components.Common.Icon
+@using Telerik.SvgIcons
+@inject NavigationManager NavManager
+
+<div class="nav-menu">
+    <div class="nav-header">
+        <TelerikIcon Icon="@SvgIcon.TrackChanges" Class="logo-icon" />
+        <span class="brand-text">
+            CATALOG<span class="blue-text">PRO</span>
+        </span>
+    </div>
+
+    <div class="nav-links">
+        @foreach (var item in NavItems)
+        {
+            <div class="nav-item @(IsActive(item.Url) ? "active" : "")"
+                 @onclick="@(() => Navigate(item.Url))">
+
+                <TelerikIcon Icon="@item.Icon" Class="menu-icon" />
+                <span class="menu-text">@item.Text</span>
+
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string CurrentUrl = "/";
+
+    protected override void OnInitialized()
+    {
+        SetCurrentUrl(NavManager.Uri);
+
+        NavManager.LocationChanged += (_, e) =>
+        {
+            SetCurrentUrl(e.Location);
+            InvokeAsync(StateHasChanged);
+        };
+    }
+
+    private void SetCurrentUrl(string uri)
+    {
+        var relative = NavManager.ToBaseRelativePath(uri);
+        CurrentUrl = "/" + relative;
+        if (CurrentUrl == "/") CurrentUrl = "/";
+    }
+
+    private bool IsActive(string url)
+        => CurrentUrl.Equals(url, StringComparison.OrdinalIgnoreCase);
+
+    private void Navigate(string url)
+        => NavManager.NavigateTo(url);
+
+    private readonly List<NavItem> NavItems = new()
+    {
+        new NavItem { Text = "Dashboard", Icon = SvgIcon.Grid, Url = "/" },
+        new NavItem { Text = "Inventory", Icon = SvgIcon.Window, Url = "/product-catalog" },
+        new NavItem { Text = "Analytics", Icon = SvgIcon.ChartLine, Url = "/analytics" },
+        new NavItem { Text = "Support", Icon = SvgIcon.QuestionCircle, Url = "/help" }
+    };
+
+    private class NavItem
+    {
+        public string Text { get; set; }
+        public ISvgIcon Icon { get; set; }
+        public string Url { get; set; }
+    }
+}
+
+<style>
+/* ---------- Layout ---------- */
+
+.nav-menu {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background-color: #111827;
+}
+
+.nav-header {
+    height: 64px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 20px;
+    border-bottom: 1px solid #1f2937;
+}
+
+.nav-links {
+    padding: 20px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* ---------- Branding ---------- */
+
+.logo-icon svg {
+    width: 26px;
+    height: 26px;
+    fill: #3b82f6;
+}
+
+.brand-text {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #ffffff;
+}
+
+.blue-text {
+    color: #3b82f6;
+}
+
+/* ---------- Menu Items ---------- */
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #9ca3af;
+    transition: background 0.2s, color 0.2s;
+}
+
+/* Icon container */
+.menu-icon {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* SVG icon styling */
+.menu-icon svg {
+    width: 20px;
+    height: 20px;
+    fill: #9ca3af;
+}
+
+/* Text */
+.menu-text {
+    font-size: 0.95rem;
+    font-weight: 500;
+    line-height: 1;
+}
+
+/* ---------- Hover ---------- */
+
+.nav-item:hover {
+    background-color: #1f2937;
+    color: #ffffff;
+}
+
+.nav-item:hover .menu-icon svg {
+    fill: #ffffff;
+}
+
+/* ---------- Active ---------- */
+
+.nav-item.active {
+    background-color: #3b82f6;
+    color: #ffffff;
+}
+
+.nav-item.active .menu-icon svg {
+    fill: #ffffff;
+}
+</style>

@@ -1,0 +1,114 @@
+﻿@page "/analytics"
+@using Telerik.Blazor
+@using Telerik.Blazor.Components
+@using global::ProductCatalog.Models
+@using global::ProductCatalog.Services
+@inject ProductService ProductService
+
+<PageTitle>Analytics</PageTitle>
+
+<h2>Analytics Dashboard</h2>
+
+<div class="analytics-wrapper">
+    <!-- Category-wise Products Chart -->
+    <div class="chart-card">
+        <h3>Products per Category</h3>
+        <TelerikChart OnSeriesClick="@OnSeriesClick">
+            <ChartSeriesItems>
+                <ChartSeries Type="ChartSeriesType.Column"
+                             Name="Products"
+                             Data="@CategoryChartData"
+                             Field="Count"
+                             CategoryField="Category">
+                </ChartSeries>
+            </ChartSeriesItems>
+
+            <ChartCategoryAxes>
+                <ChartCategoryAxis>
+                    <ChartCategoryAxisLabels>
+                        <ChartCategoryAxisLabelsRotation Angle="-45" />
+                    </ChartCategoryAxisLabels>
+                </ChartCategoryAxis>
+            </ChartCategoryAxes>
+        </TelerikChart>
+    </div>
+
+    <!-- Drill-down Products Table -->
+    @if (SelectedCategoryProducts.Any())
+    {
+        <div class="chart-card">
+            <h3>Products in Category: @SelectedCategory</h3>
+            <TelerikGrid Data="@SelectedCategoryProducts" Pageable="true" Sortable="true" PageSize="5">
+                <GridColumns>
+                    <GridColumn Field="@nameof(Product.Name)" Title="Product Name" />
+                    <GridColumn Field="@nameof(Product.Category)" Title="Category" />
+                    <GridColumn Field="@nameof(Product.Price)" Title="Price">
+                        <Template Context="p">@((p as Product)?.Price.ToString("C"))</Template>
+                    </GridColumn>
+                    <GridColumn Field="@nameof(Product.Stock)" Title="Stock" />
+                    <GridColumn Title="Image" Width="100px">
+                        <Template Context="p">
+                            <img src="@ProductImages[((Product)p).Id]" style="height:50px; width:auto; border-radius:4px;" />
+                        </Template>
+                    </GridColumn>
+                </GridColumns>
+            </TelerikGrid>
+        </div>
+    }
+</div>
+
+@code {
+    private List<Product> Products = new();
+    private string SelectedCategory = "";
+    private List<Product> SelectedCategoryProducts = new();
+
+    // Dictionary to store images for products
+    private Dictionary<int, string> ProductImages = new();
+
+    // Category-wise chart data
+    private IEnumerable<object> CategoryChartData =>
+        Products.GroupBy(p => p.Category)
+                .Select(g => new { Category = g.Key, Count = g.Count() })
+                .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Fetch products data from the API
+        Products = await ProductService.GetProductsAsync();
+
+        // Populate ProductImages dictionary from DummyJSON API
+        var response = await ProductService.GetRawDummyProductsAsync();
+        foreach (var p in response.products)
+        {
+            ProductImages[p.id] = p.thumbnail ?? "";
+        }
+    }
+
+    private void OnSeriesClick(ChartSeriesClickEventArgs e)
+    {
+        SelectedCategory = e.Category?.ToString() ?? "";
+        SelectedCategoryProducts = Products
+            .Where(p => p.Category == SelectedCategory)
+            .ToList();
+    }
+}
+
+<style>
+    .analytics-wrapper {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 20px;
+        margin-top: 20px;
+    }
+
+    .chart-card {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.1);
+    }
+
+        .chart-card h3 {
+            margin-bottom: 10px;
+        }
+</style>
