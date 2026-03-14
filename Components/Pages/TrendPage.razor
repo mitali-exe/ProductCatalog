@@ -1,0 +1,2991 @@
+﻿@page "/"
+@using Telerik.Blazor
+@using Telerik.Blazor.Components
+@using System.Timers
+@using Microsoft.EntityFrameworkCore
+@using Telerik.SvgIcons
+@using global::ProductCatalog.Models
+@using static Telerik.Blazor.ThemeConstants.Button
+@inject IDbContextFactory<AppDbContext> DbFactory
+@implements IDisposable
+
+<!-- ================= MAIN LAYOUT ================= -->
+<div class="chart-studio">
+
+    <!-- LEFT SIDEBAR: Configuration Panel -->
+    <div class="config-sidebar @(IsConfigCollapsed ? "collapsed" : "")">
+        <div class="sidebar-header">
+            @if (!IsConfigCollapsed)
+            {
+                <h4>
+                    <TelerikSvgIcon Icon="@SvgIcon.Gear" />
+                    Chart Studio
+                </h4>
+            }
+            <TelerikButton FillMode="flat"
+                           Icon="@(IsConfigCollapsed ? SvgIcon.ArrowRight : SvgIcon.ArrowLeft)"
+                           OnClick="@(() => IsConfigCollapsed = !IsConfigCollapsed)" />
+        </div>
+
+        @if (!IsConfigCollapsed)
+        {
+            <div class="sidebar-body">
+                <!-- TABS for organized settings -->
+                <TelerikTabStrip @bind-ActiveTabIndex="ActiveConfigTab"
+                                 TabPosition="TabPosition.Top">
+
+                    <!-- ===== TAB 1: DATA ===== -->
+                    <TabStripTab Title="Data">
+                        <div class="config-section">
+                            <div class="section-title">
+                                <TelerikSvgIcon Icon="@SvgIcon.Table" /> Data Source
+                            </div>
+
+                            <div class="config-row">
+                                <label>X Axis Field</label>
+                                <TelerikDropDownList Data="@XAxisOptions"
+                                                     TextField="Text"
+                                                     ValueField="Value"
+                                                     @bind-Value="SelectedXAxis"
+                                                     Width="100%" />
+                            </div>
+
+                            <div class="config-row">
+                                <label>Y Axis Fields</label>
+                                <TelerikMultiSelect Data="@YAxisOptions"
+                                                    TextField="Text"
+                                                    ValueField="Value"
+                                                    Value="@SelectedYAxes"
+                                                    ValueChanged="@((List<string> vals) => OnSelectedYAxesChanged(vals))"
+                                                    Placeholder="Select metrics..."
+                                                    Width="100%"
+                                                    AutoClose="false" />
+                            </div>
+
+                            <div class="config-row">
+                                <label>Time Range</label>
+                                <div class="range-buttons">
+                                    @foreach (var range in RangePresets)
+                                    {
+                                        <TelerikButton ThemeColor="@(SelectedRange == range.Value ? ThemeColor.Primary : ThemeColor.Base)"
+                                                       Size="sm"
+                                                       OnClick="@(() => ChangeRange(range.Value))">
+                                            @range.Text
+                                        </TelerikButton>
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="config-row">
+                                <label>
+                                    Refresh Interval:
+                                </label>
+
+                                <TelerikDropDownList Data="@RefreshIntervalOptions"
+                                                     @bind-Value="RefreshIntervalMs"
+                                                     Width="100%" />
+                                <small class="text-muted">Current: <b>@RefreshIntervalMs ms</b></small>
+                            </div>
+                        </div>
+                    </TabStripTab>
+
+                    <!-- ===== TAB 2: SERIES ===== -->
+                    <TabStripTab Title="Series">
+                        <div class="config-section">
+                            <div class="section-title">
+                                <TelerikSvgIcon Icon="@SvgIcon.Graph" /> Series Configuration
+                            </div>
+
+                            @if (!SelectedYAxes.Any())
+                            {
+                                <div class="empty-state">
+                                    <p>Select Y-axis fields in the Data tab first.</p>
+                                </div>
+                            }
+
+                            @foreach (var y in SelectedYAxes)
+                            {
+                                var config = GetSeriesConfig(y);
+                                var index = SelectedYAxes.IndexOf(y);
+                                <div class="series-card @(config.IsHidden ? "hidden-series" : "")">
+                                    <div class="series-card-header"
+                                         @onclick="@(() => ToggleSeriesExpanded(y))">
+                                        <div class="series-color-dot"
+                                             style="background-color: @config.Color;"></div>
+                                        <span class="series-name">@y</span>
+                                        <span class="series-type-badge">@config.ChartType</span>
+
+                                        <div class="series-actions">
+                                            <span @onclick:stopPropagation="true">
+                                                <TelerikButton FillMode="flat"
+                                                               Size="sm"
+                                                               Icon="@(config.IsHidden ? SvgIcon.EyeSlash : SvgIcon.Eye)"
+                                                               OnClick="@(() => ToggleSeriesVisibility(y))" />
+                                            </span>
+
+                                            <span @onclick:stopPropagation="true">
+                                                <TelerikButton FillMode="flat"
+                                                               Size="sm"
+                                                               Icon="@SvgIcon.ArrowUp"
+                                                               OnClick="@(() => MoveSeriesUp(y))"
+                                                               Enabled="@(index > 0)" />
+                                            </span>
+
+                                            <span @onclick:stopPropagation="true">
+                                                <TelerikButton FillMode="flat"
+                                                               Size="sm"
+                                                               Icon="@SvgIcon.ArrowDown"
+                                                               OnClick="@(() => MoveSeriesDown(y))"
+                                                               Enabled="@(index < SelectedYAxes.Count - 1)" />
+                                            </span>
+
+                                            <TelerikSvgIcon Icon="@(config.IsExpanded? SvgIcon.ChevronUp: SvgIcon.ChevronDown)" />
+                                        </div>
+                                    </div>
+
+                                    @if (config.IsExpanded)
+                                    {
+                                        <div class="series-card-body">
+                                            <!-- Chart Type as dropdown -->
+                                            <div class="config-row">
+                                                <label>Chart Type</label>
+                                                <TelerikDropDownList Data="@GetAvailableChartTypes()"
+                                                                     TextField="Label"
+                                                                     ValueField="Value"
+                                                                     Value="@config.ChartType"
+                                                                     ValueChanged="@((string v) => SetSeriesChartType(y, v))"
+                                                                     Width="100%" />
+                                            </div>
+
+                                            <!-- Color -->
+                                            <div class="config-row">
+                                                <label>Color</label>
+                                                <div class="color-picker-row">
+                                                    <input type="color"
+                                                           value="@config.Color"
+                                                           @onchange="@((ChangeEventArgs e) => SetSeriesColor(y, e.Value?.ToString()))"
+                                                           class="custom-color-input"
+                                                           aria-label="@($"Pick color for {y}")" />
+                                                </div>
+                                            </div>
+
+                                            <!-- Line-specific settings -->
+                                            @if (config.ChartType is "Line")
+                                            {
+                                                <div class="config-row">
+                                                    <label>Line Style</label>
+                                                    <TelerikDropDownList Data="@LineStyles"
+                                                                         TextField="Text"
+                                                                         ValueField="Value"
+                                                                         Value="@config.LineStyle"
+                                                                         ValueChanged="@((string v) => config.LineStyle = v)"
+                                                                         Width="100%" />
+                                                </div>
+
+                                                <div class="config-row">
+                                                    <label>Line Width</label>
+                                                    <TelerikDropDownList Data="@LineWidthOptions"
+                                                                         @bind-Value="config.LineWidth"
+                                                                         Width="100%" />
+                                                </div>
+
+                                                <div class="config-row inline">
+                                                    <label>Smooth Curve</label>
+                                                    <TelerikSwitch @bind-Value="config.IsSmooth" />
+                                                </div>
+
+                                                <div class="config-row inline">
+                                                    <label>Show Markers</label>
+                                                    <TelerikSwitch @bind-Value="config.ShowMarkers" />
+                                                </div>
+
+                                                @if (config.ShowMarkers)
+                                                {
+                                                    <div class="config-row">
+                                                        <label>Marker Type</label>
+                                                        <TelerikDropDownList Data="@MarkerTypes"
+                                                                             TextField="Text"
+                                                                             ValueField="Value"
+                                                                             Value="@config.MarkerType"
+                                                                             ValueChanged="@((string v) => config.MarkerType = v)"
+                                                                             Width="100%" />
+                                                    </div>
+
+                                                    <div class="config-row">
+                                                        <label>Marker Size</label>
+                                                        <TelerikDropDownList Data="@MarkerSizeOptions"
+                                                                             @bind-Value="config.MarkerSize"
+                                                                             Width="100%" />
+                                                    </div>
+                                                }
+                                            }
+
+                                            <!-- Area-specific: opacity -->
+                                            @if (config.ChartType == "Area")
+                                            {
+                                                <div class="config-row">
+                                                    <label>Fill Opacity</label>
+                                                    <TelerikDropDownList Data="@AreaOpacityOptions"
+                                                                         @bind-Value="config.AreaOpacity"
+                                                                         Width="100%" />
+                                                </div>
+
+                                                <div class="config-row inline">
+                                                    <label>Smooth Curve</label>
+                                                    <TelerikSwitch @bind-Value="config.IsSmooth" />
+                                                </div>
+
+                                                <div class="config-row inline">
+                                                    <label>Show Markers</label>
+                                                    <TelerikSwitch @bind-Value="config.ShowMarkers" />
+                                                </div>
+
+                                                @if (config.ShowMarkers)
+                                                {
+                                                    <div class="config-row">
+                                                        <label>Marker Type</label>
+                                                        <TelerikDropDownList Data="@MarkerTypes"
+                                                                             TextField="Text"
+                                                                             ValueField="Value"
+                                                                             Value="@config.MarkerType"
+                                                                             ValueChanged="@((string v) => config.MarkerType = v)"
+                                                                             Width="100%" />
+                                                    </div>
+
+                                                    <div class="config-row">
+                                                        <label>Marker Size</label>
+                                                        <TelerikDropDownList Data="@MarkerSizeOptions"
+                                                                             @bind-Value="config.MarkerSize"
+                                                                             Width="100%" />
+                                                    </div>
+                                                }
+                                            }
+
+                                            <!-- Bar/Column specific -->
+                                            @if (config.ChartType is "Bar" or "Column")
+                                            {
+                                                <div class="config-row">
+                                                    <label>Gap Between Bars</label>
+                                                    <TelerikDropDownList Data="@BarGapOptions"
+                                                                         @bind-Value="config.BarGap"
+                                                                         Width="100%" />
+                                                </div>
+
+                                                <div class="config-row">
+                                                    <label>Border Width</label>
+                                                    <TelerikDropDownList Data="@BorderWidthOptions"
+                                                                         @bind-Value="config.BorderWidth"
+                                                                         Width="100%" />
+                                                </div>
+
+                                                <div class="config-row">
+                                                    <label>Border Color</label>
+                                                    <input type="color"
+                                                           value="@config.BorderColor"
+                                                           @onchange="@((ChangeEventArgs e) => config.BorderColor = e.Value?.ToString() ?? "#000")"
+                                                           class="custom-color-input" />
+                                                </div>
+                                            }
+
+                                            <!-- Data Labels -->
+                                            <div class="config-row inline">
+                                                <label>Show Data Labels</label>
+                                                <TelerikSwitch @bind-Value="config.ShowDataLabels" />
+                                            </div>
+
+                                            @if (config.ShowDataLabels)
+                                            {
+                                                <div class="config-row">
+                                                    <label>Label Format</label>
+                                                    <TelerikDropDownList Data="@LabelFormats"
+                                                                         TextField="Text"
+                                                                         ValueField="Value"
+                                                                         Value="@config.DataLabelFormat"
+                                                                         ValueChanged="@((string v) => config.DataLabelFormat = v)"
+                                                                         Width="100%" />
+                                                </div>
+
+                                                <div class="config-row">
+                                                    <label>Label Position</label>
+                                                    <TelerikDropDownList Data="@DataLabelPositions"
+                                                                         TextField="Text"
+                                                                         ValueField="Value"
+                                                                         Value="@config.DataLabelPosition"
+                                                                         ValueChanged="@((string v) => config.DataLabelPosition = v)"
+                                                                         Width="100%" />
+                                                </div>
+                                            }
+
+                                            <!-- Trendline -->
+                                            <div class="config-row inline">
+                                                <label>Show Trendline</label>
+                                                <TelerikSwitch @bind-Value="config.ShowTrendline" />
+                                            </div>
+
+                                            @if (config.ShowTrendline)
+                                            {
+                                                <div class="config-row">
+                                                    <label>Trendline Type</label>
+                                                    <TelerikDropDownList Data="@TrendlineTypes"
+                                                                         Value="@config.TrendlineType"
+                                                                         ValueChanged="@((string v) => config.TrendlineType = v)"
+                                                                         Width="100%" />
+                                                </div>
+
+                                                <div class="config-row">
+                                                    <label>Trendline Color</label>
+                                                    <input type="color"
+                                                           value="@config.TrendlineColor"
+                                                           @onchange="@((ChangeEventArgs e) => config.TrendlineColor = e.Value?.ToString() ?? "#999")"
+                                                           class="custom-color-input" />
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+
+                            @if (SelectedYAxes.Any())
+                            {
+                                <div class="config-row" style="margin-top: 12px;">
+                                    <div class="section-title">
+                                        <TelerikSvgIcon Icon="@SvgIcon.AggregateFields" /> Global Series Settings
+                                    </div>
+
+                                    <div class="config-row inline">
+                                        <label>Stack Series</label>
+                                        <TelerikSwitch @bind-Value="IsStacked" />
+                                    </div>
+
+                                    @if (IsStacked)
+                                    {
+                                        <div class="config-row">
+                                            <label>Stack Type</label>
+                                            <TelerikDropDownList Data="@StackTypes"
+                                                                 TextField="Text"
+                                                                 ValueField="Value"
+                                                                 @bind-Value="SelectedStackType"
+                                                                 Width="100%" />
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </TabStripTab>
+
+                    <!-- ===== TAB 3: X AXIS ===== -->
+                    <TabStripTab Title="X Axis">
+                        <div class="config-section">
+
+                            <div class="section-title">
+                                <TelerikSvgIcon Icon="@SvgIcon.ArrowsLeftRight" /> X Axis (Category)
+                            </div>
+
+                            <div class="config-row inline">
+                                <label>Show Axis</label>
+                                <TelerikSwitch @bind-Value="XAxisConfig.Visible" />
+                            </div>
+
+                            <div class="config-row">
+                                <label>Title</label>
+                                <TelerikTextBox @bind-Value="XAxisConfig.Title"
+                                                Placeholder="Auto-generated"
+                                                Width="100%" />
+                            </div>
+
+                            <div class="config-row">
+                                <label>Label Rotation</label>
+                                <TelerikDropDownList Data="@LabelRotationOptions"
+                                                     @bind-Value="CategoryLabelRotation"
+                                                     Width="100%" />
+                                <small class="text-muted">@CategoryLabelRotation°</small>
+                            </div>
+
+                            <div class="config-row">
+                                <label>Axis Color</label>
+                                <input type="color"
+                                       value="@XAxisConfig.AxisColor"
+                                       @onchange="@((ChangeEventArgs e) => XAxisConfig.AxisColor = e.Value?.ToString() ?? "#000")"
+                                       class="custom-color-input" />
+                            </div>
+
+                            <!-- Major Ticks -->
+                            <div class="tick-group">
+                                <div class="config-row inline">
+                                    <label><strong>Major Ticks</strong></label>
+                                    <TelerikSwitch @bind-Value="ShowMajorTicks" />
+                                </div>
+
+                                @if (ShowMajorTicks)
+                                {
+                                    <div class="config-row">
+                                        <label>Step</label>
+                                        <TelerikNumericTextBox @bind-Value="MajorTickStep"
+                                                               Min="1" Max="100" Step="1"
+                                                               Width="100%" />
+                                    </div>
+
+                                    <div class="config-row">
+                                        <label>Size</label>
+                                        <TelerikDropDownList Data="@TickSizeOptions"
+                                                             @bind-Value="XAxisConfig.MajorTickSize"
+                                                             Width="100%" />
+                                    </div>
+
+                                    <div class="config-row">
+                                        <label>Color</label>
+                                        <input type="color"
+                                               value="@XAxisConfig.MajorTickColor"
+                                               @onchange="@((ChangeEventArgs e) => XAxisConfig.MajorTickColor = e.Value?.ToString() ?? "#000")"
+                                               class="custom-color-input" />
+                                    </div>
+
+                                    <div class="config-row inline">
+                                        <label>Grid Lines</label>
+                                        <TelerikSwitch @bind-Value="XAxisConfig.ShowMajorGridLines" />
+                                    </div>
+
+                                    @if (XAxisConfig.ShowMajorGridLines)
+                                    {
+                                        <div class="config-row">
+                                            <label>Grid Dash</label>
+                                            <TelerikDropDownList Data="@DashTypes"
+                                                                 TextField="Text"
+                                                                 ValueField="Value"
+                                                                 Value="@XAxisConfig.MajorGridDash"
+                                                                 ValueChanged="@((string v) => XAxisConfig.MajorGridDash = v)"
+                                                                 Width="100%" />
+                                        </div>
+
+                                        <div class="config-row">
+                                            <label>Grid Width</label>
+                                            <TelerikDropDownList Data="@GridWidthOptions"
+                                                                 @bind-Value="XAxisConfig.MajorGridWidth"
+                                                                 Width="100%" />
+                                        </div>
+
+                                        <div class="config-row">
+                                            <label>Grid Color</label>
+                                            <input type="color"
+                                                   value="@XAxisConfig.MajorGridColor"
+                                                   @onchange="@((ChangeEventArgs e) => XAxisConfig.MajorGridColor = e.Value?.ToString() ?? "#ddd")"
+                                                   class="custom-color-input" />
+                                        </div>
+                                    }
+                                }
+                            </div>
+
+                            <!-- Minor Ticks -->
+                            <div class="tick-group">
+                                <div class="config-row inline">
+                                    <label><strong>Minor Ticks</strong></label>
+                                    <TelerikSwitch @bind-Value="ShowMinorTicks" />
+                                </div>
+
+                                @if (ShowMinorTicks)
+                                {
+                                    <div class="config-row">
+                                        <label>Step</label>
+                                        <TelerikNumericTextBox @bind-Value="MinorTickStep"
+                                                               Min="1" Max="100" Step="1"
+                                                               Width="100%" />
+                                    </div>
+
+                                    <div class="config-row">
+                                        <label>Size</label>
+                                        <TelerikDropDownList Data="@TickSizeOptions"
+                                                             @bind-Value="XAxisConfig.MinorTickSize"
+                                                             Width="100%" />
+                                    </div>
+
+                                    <div class="config-row">
+                                        <label>Color</label>
+                                        <input type="color"
+                                               value="@XAxisConfig.MinorTickColor"
+                                               @onchange="@((ChangeEventArgs e) => XAxisConfig.MinorTickColor = e.Value?.ToString() ?? "#888")"
+                                               class="custom-color-input" />
+                                    </div>
+
+                                    <div class="config-row inline">
+                                        <label>Grid Lines</label>
+                                        <TelerikSwitch @bind-Value="XAxisConfig.ShowMinorGridLines" />
+                                    </div>
+
+                                    @if (XAxisConfig.ShowMinorGridLines)
+                                    {
+                                        <div class="config-row">
+                                            <label>Grid Dash</label>
+                                            <TelerikDropDownList Data="@DashTypes"
+                                                                 TextField="Text"
+                                                                 ValueField="Value"
+                                                                 Value="@XAxisConfig.MinorGridDash"
+                                                                 ValueChanged="@((string v) => XAxisConfig.MinorGridDash = v)"
+                                                                 Width="100%" />
+                                        </div>
+
+                                        <div class="config-row">
+                                            <label>Grid Width</label>
+                                            <TelerikDropDownList Data="@GridWidthOptions"
+                                                                 @bind-Value="XAxisConfig.MinorGridWidth"
+                                                                 Width="100%" />
+                                        </div>
+
+                                        <div class="config-row">
+                                            <label>Grid Color</label>
+                                            <input type="color"
+                                                   value="@XAxisConfig.MinorGridColor"
+                                                   @onchange="@((ChangeEventArgs e) => XAxisConfig.MinorGridColor = e.Value?.ToString() ?? "#ddd")"
+                                                   class="custom-color-input" />
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+                    </TabStripTab>
+
+                    <!-- ===== TAB 4: Y AXIS ===== -->
+                    <TabStripTab Title="Y Axis">
+                        <div class="config-section">
+
+                            <div class="config-row inline">
+                                <label>Sync Min/Max across all Y axes</label>
+                                <TelerikSwitch @bind-Value="SyncYAxisMinMax" />
+                            </div>
+
+                            @if (SyncYAxisMinMax)
+                            {
+                                <div class="config-row">
+                                    <label>Global Min Value (empty=auto)</label>
+                                    <TelerikNumericTextBox @bind-Value="GlobalYAxisMin"
+                                                           Width="100%"
+                                                           Format="N2" />
+                                </div>
+
+                                <div class="config-row">
+                                    <label>Global Max Value (empty=auto)</label>
+                                    <TelerikNumericTextBox @bind-Value="GlobalYAxisMax"
+                                                           Width="100%"
+                                                           Format="N2" />
+                                </div>
+
+                                <div class="config-row" style="display:flex; gap:8px; align-items:center;">
+                                    <TelerikButton OnClick="@AutoSetGlobalYRange"
+                                                   Size="sm"
+                                                   Icon="@SvgIcon.ArrowRotateCcw">
+                                        Auto set from data
+                                    </TelerikButton>
+
+                                    <small class="text-muted">Uses currently visible (aggregated) points.</small>
+                                </div>
+                            }
+
+                            @foreach (var axisId in GetDistinctYAxes())
+                            {
+                                var yConfig = GetYAxisConfig(axisId);
+                                <div class="axis-config-block">
+                                    <div class="section-title clickable"
+                                         @onclick="@(() => yConfig.IsExpanded = !yConfig.IsExpanded)">
+                                        <TelerikSvgIcon Icon="@SvgIcon.ArrowsTopBottom" />
+                                        Y Axis: @axisId
+                                        <TelerikSvgIcon Icon="@(yConfig.IsExpanded? SvgIcon.ChevronUp: SvgIcon.ChevronDown)" />
+                                    </div>
+
+                                    @if (yConfig.IsExpanded)
+                                    {
+                                        <div class="config-row inline">
+                                            <label>Visible</label>
+                                            <TelerikSwitch Value="@yConfig.Visible"
+                                                           ValueChanged="@((bool v) => SetYAxisVisible(axisId, v))" />
+
+                                        </div>
+
+                                        <div class="config-row">
+                                            <label>Title</label>
+                                            <TelerikTextBox @bind-Value="yConfig.Title"
+                                                            Placeholder="@axisId"
+                                                            Width="100%" />
+                                        </div>
+
+                                        <div class="config-row">
+                                            <label>Position</label>
+                                            <TelerikDropDownList Data="@(new List<string> { "Left", "Right" })"
+                                                                 Value="@yConfig.Position"
+                                                                 ValueChanged="@((string v) => SetYAxisPosition(axisId, v))"
+                                                                 Width="100%" />
+                                        </div>
+
+                                        <div class="config-row">
+                                            <label>Min Value (empty=auto)</label>
+                                            <TelerikNumericTextBox @bind-Value="yConfig.Min"
+                                                                   Width="100%"
+                                                                   Enabled="!SyncYAxisMinMax"
+                                                                   Format="N2" />
+                                        </div>
+
+                                        <div class="config-row">
+                                            <label>Max Value (empty=auto)</label>
+                                            <TelerikNumericTextBox @bind-Value="yConfig.Max"
+                                                                   Width="100%"
+                                                                   Enabled="!SyncYAxisMinMax"
+                                                                   Format="N2" />
+                                        </div>
+
+                                        <div class="config-row">
+                                            <label>Axis Color</label>
+                                            <input type="color"
+                                                   value="@yConfig.AxisColor"
+                                                   @onchange="@((ChangeEventArgs e) => yConfig.AxisColor = e.Value?.ToString() ?? "#000")"
+                                                   class="custom-color-input" />
+                                        </div>
+
+                                        <!-- Y Major Ticks -->
+                                        <div class="tick-group">
+                                            <div class="config-row inline">
+                                                <label><strong>Major Ticks</strong></label>
+                                                <TelerikSwitch @bind-Value="yConfig.ShowMajorTicks" />
+                                            </div>
+
+                                            @if (yConfig.ShowMajorTicks)
+                                            {
+                                                <div class="config-row">
+                                                    <label>Major Unit</label>
+                                                    <TelerikNumericTextBox @bind-Value="yConfig.MajorUnit"
+                                                                           Min="1.0" Max="10000.0" Step="10.0"
+                                                                           Width="100%" Format="N0" />
+                                                </div>
+
+                                                <div class="config-row inline">
+                                                    <label>Grid Lines</label>
+                                                    <TelerikSwitch @bind-Value="yConfig.ShowMajorGridLines" />
+                                                </div>
+
+                                                @if (yConfig.ShowMajorGridLines)
+                                                {
+                                                    <div class="config-row">
+                                                        <label>Grid Dash</label>
+                                                        <TelerikDropDownList Data="@DashTypes"
+                                                                             TextField="Text"
+                                                                             ValueField="Value"
+                                                                             Value="@yConfig.MajorGridDash"
+                                                                             ValueChanged="@((string v) => yConfig.MajorGridDash = v)"
+                                                                             Width="100%" />
+                                                    </div>
+                                                }
+                                            }
+                                        </div>
+
+                                        <!-- Y Minor Ticks -->
+                                        <div class="tick-group">
+                                            <div class="config-row inline">
+                                                <label><strong>Minor Ticks</strong></label>
+                                                <TelerikSwitch @bind-Value="yConfig.ShowMinorTicks" />
+                                            </div>
+
+                                            @if (yConfig.ShowMinorTicks)
+                                            {
+                                                <div class="config-row">
+                                                    <label>Minor Unit</label>
+                                                    <TelerikNumericTextBox @bind-Value="yConfig.MinorUnit"
+                                                                           Min="1.0" Max="5000.0" Step="5.0"
+                                                                           Width="100%" Format="N0" />
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </TabStripTab>
+
+                    <!-- ===== TAB 5: TOOLBAR ===== -->
+                    <TabStripTab Title="Toolbar">
+                        <div class="config-section">
+                            <div class="section-title">
+                                <TelerikSvgIcon Icon="@SvgIcon.EditTools" /> Toolbar Settings
+                            </div>
+
+                            <div class="config-row inline">
+                                <label>Show Toolbar</label>
+                                <TelerikSwitch @bind-Value="ShowToolbar" />
+                            </div>
+
+                            <div class="config-row inline">
+                                <label>Show Pause/Resume Button</label>
+                                <TelerikSwitch @bind-Value="ShowPauseResumeButton" Enabled="ShowToolbar" />
+                            </div>
+
+                            <div class="config-row inline">
+                                <label>Show ShowAll Button</label>
+                                <TelerikSwitch @bind-Value="ShowShowAllButton" Enabled="ShowToolbar" />
+                            </div>
+
+                            <div class="config-row inline">
+                                <label>Show HideAll Button</label>
+                                <TelerikSwitch @bind-Value="ShowHideAllButton" Enabled="ShowToolbar" />
+                            </div>
+                        </div>
+                    </TabStripTab>
+
+                    <!-- ===== TAB 6: LEGEND ===== -->
+                    <TabStripTab Title="Legend">
+                        <div class="config-section">
+                            <div class="section-title">
+                                <TelerikSvgIcon Icon="@SvgIcon.ListUnordered" /> Legend Settings
+                            </div>
+
+                            <div class="config-row inline">
+                                <label>Show Legend</label>
+                                <TelerikSwitch @bind-Value="ShowLegend" />
+                            </div>
+
+                            <div class="config-row">
+                                <label>Position</label>
+                                <div class="position-buttons">
+                                    @foreach (var pos in LegendPositions)
+                                    {
+                                        <TelerikButton ThemeColor="@(SelectedLegendPosition == pos ? ThemeColor.Primary : ThemeColor.Base)"
+                                                       Size="sm"
+                                                       OnClick="@(() => SelectedLegendPosition = pos)">
+                                            @pos
+                                        </TelerikButton>
+                                    }
+                                </div>
+                            </div>
+
+                            <hr />
+
+                            <div class="section-title">
+                                <TelerikSvgIcon Icon="@SvgIcon.Shapes" /> Legend Marker
+                            </div>
+
+                            <div class="config-row inline">
+                                <label>Visible</label>
+                                <TelerikSwitch @bind-Value="LegendMarkerVisible" />
+                            </div>
+
+                            @if (LegendMarkerVisible)
+                            {
+                                <div class="config-row">
+                                    <label>Marker Shape</label>
+                                    <TelerikDropDownList Data="@MarkerTypes"
+                                                         TextField="Text"
+                                                         ValueField="Value"
+                                                         @bind-Value="LegendMarkerType"
+                                                         Enabled="LegendMarkerVisible"
+                                                         Width="100%" />
+                                </div>
+
+                                <div class="config-row">
+                                    <label>Marker Color</label>
+                                    <input type="color"
+                                           value="@LegendMarkerBackground"
+                                           @onchange="@((ChangeEventArgs e) => LegendMarkerBackground = e.Value?.ToString() ?? "")"
+                                           class="custom-color-input" />
+                                </div>
+
+                                <div class="config-row">
+                                    <label>Border Color</label>
+                                    <input type="color"
+                                           value="@LegendMarkerBorderColor"
+                                           @onchange="@((ChangeEventArgs e) => LegendMarkerBorderColor = e.Value?.ToString() ?? "#666")"
+                                           class="custom-color-input" />
+                                </div>
+
+                                <hr />
+
+                                <div class="section-title">
+                                    <TelerikSvgIcon Icon="@SvgIcon.Pointer" /> Highlight Marker (hover)
+                                </div>
+
+                                <div class="config-row">
+                                    <label>Highlight Background</label>
+                                    <input type="color"
+                                           value="@LegendMarkerHighlightBackground"
+                                           @onchange="@((ChangeEventArgs e) => LegendMarkerHighlightBackground = e.Value?.ToString() ?? "#ffeb3b")"
+                                           class="custom-color-input" />
+                                </div>
+
+                                <div class="config-row">
+                                    <label>Highlight Border Color</label>
+                                    <input type="color"
+                                           value="@LegendMarkerHighlightBorderColor"
+                                           @onchange="@((ChangeEventArgs e) => LegendMarkerHighlightBorderColor = e.Value?.ToString() ?? "#999")"
+                                           class="custom-color-input" />
+                                </div>
+                            }
+                        </div>
+                    </TabStripTab>
+
+                    <!-- ===== TAB 7: TOOLTIP ===== -->
+                    <TabStripTab Title="ToolTip">
+                        <div class="config-section">
+                            <div class="section-title">
+                                <TelerikSvgIcon Icon="@SvgIcon.Comment" /> Tooltip
+                            </div>
+
+                            <div class="config-row inline">
+                                <label>Show Tooltip</label>
+                                <TelerikSwitch @bind-Value="ShowTooltip" />
+                            </div>
+
+                            <div class="config-row inline">
+                                <label>Shared Tooltip</label>
+                                <TelerikSwitch @bind-Value="SharedTooltip" Enabled="ShowTooltip" />
+                            </div>
+
+                            <div class="config-row">
+                                <label>Shared Tooltip Background</label>
+                                <input type="color"
+                                       value="@TooltipBackground"
+                                       @onchange="@((ChangeEventArgs e) => TooltipBackground = e.Value?.ToString() ?? "#ffffff")"
+                                       class="custom-color-input" />
+                            </div>
+                        </div>
+                    </TabStripTab>
+
+                    <!-- ===== TAB 8: DISPLAY ===== -->
+                    <TabStripTab Title="Display">
+                        <div class="config-section">
+
+                            <!-- Chart Appearance -->
+                            <div class="section-title">
+                                <TelerikSvgIcon Icon="@SvgIcon.Image" /> Appearance
+                            </div>
+
+                            <div class="config-row">
+                                <label>Chart Title</label>
+                                <TelerikTextBox @bind-Value="CustomChartTitle"
+                                                Placeholder="Auto-generated"
+                                                Width="100%" />
+                            </div>
+
+                            <div class="config-row">
+                                <label>Chart Height</label>
+                                <TelerikDropDownList Data="@ChartHeightOptions"
+                                                     @bind-Value="ChartHeight"
+                                                     Width="100%" />
+                                <small class="text-muted">@ChartHeight px</small>
+                            </div>
+
+                            <div class="config-row">
+                                <label>Background</label>
+                                <div class="theme-buttons">
+                                    <TelerikButton ThemeColor="@(ChartBackground == "white" ? ThemeColor.Primary : ThemeColor.Base)"
+                                                   Size="sm"
+                                                   OnClick="@(() => ChartBackground = "white")">
+                                        Light
+                                    </TelerikButton>
+                                    <TelerikButton ThemeColor="@(ChartBackground == "#1e1e2f" ? ThemeColor.Primary : ThemeColor.Base)"
+                                                   Size="sm"
+                                                   OnClick="@(() => ChartBackground = "#1e1e2f")">
+                                        Dark
+                                    </TelerikButton>
+                                    <input type="color"
+                                           value="@ChartBackground"
+                                           @onchange="@((ChangeEventArgs e) => ChartBackground = e.Value?.ToString() ?? "white")"
+                                           class="custom-color-input" />
+                                </div>
+                            </div>
+
+                            <div class="config-row">
+                                <label>Rendering</label>
+                                <TelerikDropDownList Data="@RenderModes"
+                                                     TextField="Text"
+                                                     ValueField="Value"
+                                                     @bind-Value="SelectedRenderMode"
+                                                     Width="100%" />
+                            </div>
+
+                            <div class="config-row inline">
+                                <label>Transitions / Animation</label>
+                                <TelerikSwitch @bind-Value="EnableTransitions" />
+                            </div>
+
+                            <hr />
+
+                            <!-- Layout controls (moved from removed Layout tab) -->
+                            <div class="section-title">
+                                <TelerikSvgIcon Icon="@SvgIcon.Layout" /> Layout & Spacing
+                            </div>
+
+                            <div class="config-row">
+                                <label>Chart Margin (T R B L)</label>
+                                <div class="d-flex gap-2">
+                                    <TelerikNumericTextBox @bind-Value="ChartMarginTop" Min="0" Max="200" Width="25%" />
+                                    <TelerikNumericTextBox @bind-Value="ChartMarginRight" Min="0" Max="200" Width="25%" />
+                                    <TelerikNumericTextBox @bind-Value="ChartMarginBottom" Min="0" Max="200" Width="25%" />
+                                    <TelerikNumericTextBox @bind-Value="ChartMarginLeft" Min="0" Max="200" Width="25%" />
+                                </div>
+                                <small class="text-muted">Top Right Bottom Left (px)</small>
+                            </div>
+
+                            <div class="config-row">
+                                <label>Plot Area Padding</label>
+                                <TelerikNumericTextBox @bind-Value="PlotAreaPadding" Min="0" Max="100" Width="100%" />
+                            </div>
+
+                            <div class="config-row">
+                                <label>Title Alignment</label>
+                                <TelerikDropDownList Data="@TitleAlignOptions"
+                                                     @bind-Value="TitleAlignment"
+                                                     Width="100%" />
+                            </div>
+
+                            <hr />
+
+                            <div class="config-row" style="margin-top:8px;">
+                                <TelerikButton OnClick="@ResetToDefaults"
+                                               ThemeColor="ThemeColor.Error"
+                                               Icon="@SvgIcon.ArrowRotateCcw"
+                                               Class="full-width-btn">
+                                    Reset to Defaults
+                                </TelerikButton>
+                            </div>
+                        </div>
+                    </TabStripTab>
+
+                </TelerikTabStrip>
+            </div>
+
+            <!-- Show Trend Button -->
+            <div class="sidebar-footer">
+                <TelerikButton OnClick="@OpenChart"
+                               ThemeColor="ThemeColor.Primary"
+                               Size="lg"
+                               Class="full-width-btn"
+                               Icon="@SvgIcon.ChartLineStacked">
+                    Show Trend Chart
+                </TelerikButton>
+            </div>
+        }
+    </div>
+
+    <!-- ================= CHART WINDOW ================= -->
+    <TelerikWindow @bind-Visible="ShowWindow"
+                   Width="1400px"
+                   Height="800px"
+                   Modal="false"
+                   Draggable="true"
+                   Resizable="true">
+
+        <WindowTitle>
+            <div class="window-title-bar">
+                <span>📊 Live Trend Chart</span>
+            </div>
+        </WindowTitle>
+
+        <WindowActions>
+            <WindowAction Name="Close"
+                          OnClick="@(() => ShowWindow = false)" />
+        </WindowActions>
+
+        <WindowContent>
+
+            <div class="mb-2 d-flex gap-2 align-items-center flex-wrap">
+                @if (ShowToolbar)
+                {
+                    @if (ShowPauseResumeButton)
+                    {
+                        <TelerikButton OnClick="@TogglePauseResume"
+                                       ThemeColor="@(IsPaused ? ThemeColor.Success : ThemeColor.Warning)"
+                                       Icon="@(IsPaused ? SvgIcon.Play : SvgIcon.Pause)">
+                            @(IsPaused ? "Resume" : "Pause")
+                        </TelerikButton>
+                    }
+
+                    @if (ShowShowAllButton)
+                    {
+                        <TelerikButton OnClick="@ShowAllSeries" ThemeColor="ThemeColor.Info">
+                            Show All Series
+                        </TelerikButton>
+                    }
+
+                    @if (ShowHideAllButton)
+                    {
+                        <TelerikButton OnClick="@HideAllSeries" ThemeColor="ThemeColor.Error">
+                            Hide All Series
+                        </TelerikButton>
+                    }
+                }
+
+                @* ── Status badges ── *@
+                @if (IsLiveMode && !IsPaused)
+                {
+                    <span class="badge bg-success ms-2" style="font-size: 0.85rem;">
+                        ● Live
+                    </span>
+                }
+                else if (IsPaused && PausedByInteraction)
+                {
+                    <span class="badge bg-warning text-dark ms-2" style="font-size: 0.85rem;">
+                        ⚠ Auto-paused (zoom/pan detected)
+                    </span>
+                }
+                else if (IsPaused)
+                {
+                    <span class="badge bg-secondary ms-2" style="font-size: 0.85rem;">
+                        ⏸ Manually paused
+                    </span>
+                }
+                else
+                {
+                    <span class="badge bg-info text-dark ms-2" style="font-size: 0.85rem;">
+                        📜 Viewing history
+                    </span>
+                }
+
+                @* ── Window position info ── *@
+                @if (VisibleMin.HasValue && VisibleMax.HasValue)
+                {
+                    <span class="badge bg-light text-dark ms-2 border" style="font-size: 0.8rem;">
+                        🕐 @VisibleMin.Value.ToString(GetTooltipTimeFormat())
+                        → @VisibleMax.Value.ToString(GetTooltipTimeFormat())
+                    </span>
+                }
+
+                <span class="badge bg-light text-dark ms-2 border" style="font-size: 0.8rem;">
+                    📊 @ChartData.Count points in memory
+                </span>
+            </div>
+
+            <!-- Chart Wrapper -->
+            <div id="chartInteractionWrapper"
+                 @onmousedown="OnChartMouseDown"
+                 @onmousemove="OnChartMouseMove"
+                 @onmouseup="OnChartMouseUp"
+                 @onmouseleave="OnChartMouseLeave"
+                 @onwheel="OnChartWheel"
+                 @onwheel:preventDefault="@_preventWheelDefault"
+                 style="border-radius: 8px; padding:@($"{PlotAreaPadding}px"); margin:@($"{ChartMarginTop}px {ChartMarginRight}px {ChartMarginBottom}px {ChartMarginLeft}px");">
+
+                <TelerikChart @key="_chartKey"
+                              Height="@($"{ChartHeight}px")"
+                              Transitions="@EnableTransitions"
+                              RenderAs="@GetRenderMode()"
+                              OnLegendItemClick="@OnLegendItemClick">
+
+                    <ChartPlotArea Background="@ChartBackground" Opacity="@(ChartPlotAreaOpacity)">
+                        <ChartPlotAreaBorder Color="#e6e6e6" Width="1" />
+                    </ChartPlotArea>
+
+                    <ChartTitle Text="@GetDynamicChartTitle()" Align="@GetChartTitleAlign()" />
+
+                    <ChartLegend Visible="@ShowLegend"
+                                 Position="@GetLegendPosition()">
+                        @if (LegendMarkerVisible)
+                        {
+                            <ChartLegendItem>
+                                <ChartLegendItemMarkers Background="@LegendMarkerBackground"
+                                                        Type="@GetMarkerType(LegendMarkerType)"
+                                                        Visible="@LegendMarkerVisible">
+                                    <ChartLegendItemMarkersBorder Color="@LegendMarkerBorderColor" />
+                                </ChartLegendItemMarkers>
+
+                                <ChartLegendItemHighlight>
+                                    <ChartLegendItemHighlightMarkers Background="@LegendMarkerHighlightBackground"
+                                                                     Visible="true">
+                                        <ChartLegendItemHighlightMarkersBorder Color="@LegendMarkerHighlightBorderColor" />
+                                    </ChartLegendItemHighlightMarkers>
+                                </ChartLegendItemHighlight>
+
+                            </ChartLegendItem>
+                        }
+                    </ChartLegend>
+
+                    <ChartZoomable Enabled="true">
+                        <ChartZoomableMousewheel Enabled="true" />
+                    </ChartZoomable>
+
+                    <ChartPannable Enabled="true" />
+
+                    <ChartTooltip Visible="@ShowTooltip"
+                                  Shared="@SharedTooltip"
+                                  Background="@(SharedTooltip ? TooltipBackground : null)">
+                        <SharedTemplate Context="context">
+                            @{
+                                string categoryText = "";
+                                var firstPoint = context.Points.FirstOrDefault();
+
+                                if (firstPoint?.DataItem is AggregatedReading dataItem)
+                                {
+                                    categoryText = dataItem.Time.ToString(GetTooltipTimeFormat());
+                                }
+                                else
+                                {
+                                    categoryText = context.Category?.ToString() ?? "";
+                                }
+                            }
+
+                            <div>
+                                Time: <strong>@categoryText</strong>
+                                <hr style="margin:5px 0;" />
+
+                                @foreach (var point in context.Points)
+                                {
+                                    var item = point.DataItem;
+                                    var prop = item?.GetType().GetProperty(point.SeriesName);
+                                    var value = prop?.GetValue(item);
+
+                                    if (value != null)
+                                    {
+                                        double number = 0;
+                                        if (double.TryParse(value.ToString(), out number))
+                                        {
+                                            <div>
+                                                @point.SeriesName:
+                                                <strong>@number.ToString("N2")</strong>
+                                            </div>
+                                        }
+                                    }
+                                }
+                            </div>
+                        </SharedTemplate>
+
+                        <Template Context="context">
+                            @{
+                                string tipTime = "";
+
+                                if (context.DataItem is AggregatedReading tipItem)
+                                {
+                                    tipTime = tipItem.Time.ToString(GetTooltipTimeFormat());
+                                }
+
+                                var tipProp = context.DataItem?.GetType()
+                                .GetProperty(context.SeriesName);
+                                var tipValue = tipProp?.GetValue(context.DataItem);
+                                double tipNumber = 0;
+                                bool hasTipNumber = tipValue != null
+                                && double.TryParse(tipValue.ToString(), out tipNumber);
+
+                                var seriesColor = GetSeriesColor(context.SeriesName);
+                                var textColor = GetContrastingTextColor(seriesColor);
+                            }
+
+                            <div style="background:@seriesColor; color:@textColor; padding:10px; border-radius:6px; max-width:320px;">
+                                <strong>@context.SeriesName</strong><br />
+                                Time: @tipTime<br />
+                                Value: <strong>@(hasTipNumber? tipNumber.ToString("N2") : tipValue?.ToString())</strong>
+                            </div>
+                        </Template>
+
+                    </ChartTooltip>
+
+                    <!-- Category Axis -->
+                    <ChartCategoryAxes>
+                        <ChartCategoryAxis Type="ChartCategoryAxisType.Date"
+                                           BaseUnit="@GetBaseUnit()"
+                                           BaseUnitStep="@GetAutoBaseUnitStep()"
+                                           Min="@VisibleMin"
+                                           Max="@VisibleMax"
+                                           AxisCrossingValue="@GetCategoryAxisCrossings()"
+                                           Visible="@XAxisConfig.Visible"
+                                           Color="@XAxisConfig.AxisColor">
+
+                            <ChartCategoryAxisMajorTicks Visible="@ShowMajorTicks"
+                                                         Size="@XAxisConfig.MajorTickSize"
+                                                         Color="@XAxisConfig.MajorTickColor"
+                                                         Step="@MajorTickStep" />
+
+                            <ChartCategoryAxisMinorTicks Visible="@ShowMinorTicks"
+                                                         Size="@XAxisConfig.MinorTickSize"
+                                                         Color="@XAxisConfig.MinorTickColor"
+                                                         Step="@MinorTickStep" />
+
+                            <ChartCategoryAxisMajorGridLines Visible="@(ShowMajorTicks && XAxisConfig.ShowMajorGridLines)"
+                                                             Width="@XAxisConfig.MajorGridWidth"
+                                                             Step="@MajorTickStep"
+                                                             Color="@XAxisConfig.MajorGridColor"
+                                                             DashType="@GetDashType(XAxisConfig.MajorGridDash)" />
+
+                            <ChartCategoryAxisMinorGridLines Visible="@(ShowMinorTicks && XAxisConfig.ShowMinorGridLines)"
+                                                             Width="@XAxisConfig.MinorGridWidth"
+                                                             Step="@MinorTickStep"
+                                                             Color="@XAxisConfig.MinorGridColor"
+                                                             DashType="@GetDashType(XAxisConfig.MinorGridDash)" />
+
+                            <ChartCategoryAxisTitle Text="@(string.IsNullOrEmpty(XAxisConfig.Title) ? GetXAxisTitle() : XAxisConfig.Title)" />
+
+                            <ChartCategoryAxisLabels Format="@GetAxisLabelFormat()"
+                                                     Step="@(ShowMajorTicks ? MajorTickStep : 1)">
+                                <ChartCategoryAxisLabelsRotation Angle="@CategoryLabelRotation"
+                                                                 Align="ChartAxisLabelsRotationAlignment.Center" />
+                            </ChartCategoryAxisLabels>
+
+                        </ChartCategoryAxis>
+                    </ChartCategoryAxes>
+
+                    <!-- Value Axes -->
+                    <ChartValueAxes>
+                        @foreach (var axisId in GetDistinctYAxes())
+                        {
+                            var yConfig = GetYAxisConfig(axisId);
+                            <ChartValueAxis Name="@axisId"
+                                            AxisCrossingValue="@(new object[] { double.MinValue })"
+                                            Visible="@yConfig.Visible"
+                                            Color="@yConfig.AxisColor"
+                                            Min="@(SyncYAxisMinMax
+                                                    ? GlobalYAxisMin
+                                                : (axisId == "Temperature") ? null : 0.00)"
+                                        Max="@(SyncYAxisMinMax ? GlobalYAxisMax : yConfig.Max)"
+                                        MajorUnit="@(yConfig.ShowMajorTicks ? yConfig.MajorUnit : (double?)null)"
+                                        MinorUnit="@(yConfig.ShowMinorTicks ? yConfig.MinorUnit : (double?)null)">
+
+                                <ChartValueAxisTitle Text="@(string.IsNullOrEmpty(yConfig.Title) ? axisId : yConfig.Title)" />
+
+                                <ChartValueAxisMajorTicks Visible="@yConfig.ShowMajorTicks"
+                                                          Size="6"
+                                                          Color="@yConfig.AxisColor" />
+
+                                <ChartValueAxisMinorTicks Visible="@yConfig.ShowMinorTicks"
+                                                          Size="3" />
+
+                                <ChartValueAxisMajorGridLines Visible="@(yConfig.ShowMajorTicks && yConfig.ShowMajorGridLines)"
+                                                              Width="1"
+                                                              DashType="@GetDashType(yConfig.MajorGridDash)" />
+
+                                <ChartValueAxisMinorGridLines Visible="@(yConfig.ShowMinorTicks)"
+                                                              Width="0.5"
+                                                              DashType="DashType.Dot" />
+
+                            @if (PlotBands.Any())
+                                {
+                                    <ChartValueAxisPlotBands>
+                                        @foreach (var band in PlotBands)
+                                        {
+                                            <ChartValueAxisPlotBand From="@((double)band.From)"
+                                                                    To="@((double)band.To)"
+                                                                    Color="@band.Color"
+                                                                    Opacity="@((float)band.Opacity)" />
+                                        }
+                                    </ChartValueAxisPlotBands>
+                                }
+                            </ChartValueAxis>
+                        }
+                    </ChartValueAxes>
+
+                    <!-- Series -->
+                    <ChartSeriesItems>
+                        @foreach (var y in SelectedYAxes.Where(y => GetYAxisConfig(y).Visible))
+                        {
+                            var cfg = GetSeriesConfig(y);
+                            var isHidden = cfg.IsHidden;
+                            var axisName = y;
+
+                            <ChartSeries Data="@GetAggregatedVisibleData()"
+                                         Field="@y"
+                                         CategoryField="Time"
+                                         Type="@GetSeriesType(cfg.ChartType)"
+                                         Name="@y"
+                                         Axis="@axisName"
+                                         Color="@cfg.Color"
+                                         Visible="@(!isHidden)"
+                                         Style="@(cfg.IsSmooth ? ChartSeriesStyle.Smooth : ChartSeriesStyle.Normal)"
+                                         DashType="@GetDashType(cfg.LineStyle)"
+                                         Width="@cfg.LineWidth"
+                                         Gap="@cfg.BarGap"
+                                         Opacity="@((float)(cfg.ChartType == "Area" ? cfg.AreaOpacity : 1.0))">
+
+                                <ChartSeriesLine Style="@(cfg.IsSmooth? ChartSeriesLineStyle.Smooth: ChartSeriesLineStyle.Normal)" />
+
+                                <ChartSeriesStack Enabled="@(IsStacked && IsStackSupported(cfg.ChartType))"
+                                                  Type="@GetStackType()" />
+
+                                <ChartSeriesMarkers Visible="@(cfg.ShowMarkers)"
+                                                    Type="@GetMarkerType(cfg.MarkerType)"
+                                                    Size="@cfg.MarkerSize" />
+
+                                <ChartSeriesBorder Width="@cfg.BorderWidth"
+                                                   Color="@cfg.BorderColor" />
+
+                                @if (cfg.ShowDataLabels)
+                                {
+                                    <ChartSeriesLabels Visible="true"
+                                                       Format="@cfg.DataLabelFormat"
+                                                       Position="@GetLabelPosition(cfg.DataLabelPosition)" />
+                                }
+                            </ChartSeries>
+
+                            @* Trendline per series *@
+                            @if (cfg.ShowTrendline)
+                            {
+                                var trendName = $"{y} Trend";
+                                var isTrendHidden = HiddenSeries.Contains(trendName);
+
+                                <ChartSeries Data="@GetAggregatedVisibleData()"
+                                             For="@y"
+                                             Type="@GetTrendlineSeriesType(cfg.TrendlineType)"
+                                             Name="@trendName"
+                                             Color="@cfg.TrendlineColor"
+                                             Visible="@(!isTrendHidden)">
+                                </ChartSeries>
+                            }
+                        }
+                    </ChartSeriesItems>
+
+                </TelerikChart>
+
+            </div>
+        </WindowContent>
+    </TelerikWindow>
+
+</div>
+
+@code {
+
+    // ═══════════════════════════════════════════════════════
+    //  STATE
+    // ═══════════════════════════════════════════════════════
+
+    private bool ShowWindow = false;
+    private bool ShowLegend = true;
+    private bool IsPaused = false;
+    private bool ShowTooltip = true;
+    private bool SharedTooltip = true;
+    private bool IsStacked = false;
+    private bool PausedByInteraction = false;
+    private bool _preventWheelDefault = false;
+    private bool IsConfigCollapsed = false;
+    private bool EnableTransitions = false;
+
+    private string SelectedXAxis = "Time";
+    private int CategoryLabelRotation = -45;
+    private string SelectedRange = "30s";
+    private string SelectedStackType = "Normal";
+    private string SelectedRenderMode = "Canvas";
+    private string ChartBackground = "white";
+    private double ChartPlotAreaOpacity = 1.0;
+    private string CustomChartTitle = "";
+    private string TooltipBackground = "#e6e6e6";
+    private int ChartHeight = 550;
+    private int ActiveConfigTab = 0;
+
+    // Toolbar settings
+    private bool ShowToolbar = true;
+    private bool ShowPauseResumeButton = true;
+    private bool ShowShowAllButton = false;
+    private bool ShowHideAllButton = false;
+
+    // Legend marker customization
+    private string SelectedLegendPosition = "Bottom";
+    private bool LegendMarkerVisible = false;
+    private string LegendMarkerType = "Circle";
+    private string LegendMarkerBackground = "#116fd4";
+    private string LegendMarkerBorderColor = "#666666";
+    private string LegendMarkerHighlightBackground = "#ffeb3b";
+    private string LegendMarkerHighlightBorderColor = "#999999";
+
+    // Layout-specific properties
+    private int ChartMarginTop = 8;
+    private int ChartMarginRight = 8;
+    private int ChartMarginBottom = 8;
+    private int ChartMarginLeft = 8;
+    private int PlotAreaPadding = 8;
+    private string TitleAlignment = "Center";
+    private List<string> TitleAlignOptions = new() { "Left", "Center", "Right" };
+
+    // Backing field + property so dropdown changes immediately update timer interval
+    private int _refreshIntervalMs = 100;
+    private int RefreshIntervalMs
+    {
+        get => _refreshIntervalMs;
+        set
+        {
+            if (_refreshIntervalMs == value) return;
+            _refreshIntervalMs = value;
+            UpdateTimerInterval();
+        }
+    }
+
+    private List<int> RefreshIntervalOptions = new() { 50, 100, 250, 500, 1000, 2000, 5000 };
+    private List<int> ChartHeightOptions = new() { 400, 500, 550, 650, 750, 850 };
+    private List<int> LineWidthOptions = Enumerable.Range(1, 8).ToList();
+    private List<int> MarkerSizeOptions = new() { 2, 4, 6, 8, 10, 12, 14, 16 };
+    private List<double> AreaOpacityOptions = new() { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1.0 };
+    private List<double> BarGapOptions = new() { 0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0 };
+    private List<int> BorderWidthOptions = new() { 0, 1, 2, 3, 4, 5 };
+    private List<int> LabelRotationOptions = new() { -90, -75, -60, -45, -30, -15, 0, 15, 30, 45, 60, 75, 90 };
+    private List<int> TickSizeOptions = Enumerable.Range(1, 20).ToList();
+    private List<double> GridWidthOptions = new() { 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0 };
+
+    private List<string> SelectedYAxes = new();
+    private Dictionary<string, SeriesConfiguration> SeriesConfigs = new();
+    private Dictionary<string, YAxisConfiguration> YAxisConfigs = new();
+    private HashSet<string> HiddenSeries = new();
+    private List<PlotBandConfig> PlotBands = new();
+    private AxisConfiguration XAxisConfig = new();
+
+    private long _chartKey = 0;
+
+    private bool SyncYAxisMinMax = false;
+    private double? GlobalYAxisMin = null;
+    private double? GlobalYAxisMax = null;
+
+    // ═══════════════════════════════════════════════════════
+    //  SLIDING WINDOW STATE
+    // ═══════════════════════════════════════════════════════
+
+    private List<SensorReading> ChartData = new();
+    private DateTime _lastLoadedTime = DateTime.MinValue;
+    private DateTime? VisibleMin;
+    private DateTime? VisibleMax;
+    private bool IsLiveMode = true;
+    private DateTime? _windowAnchorMax;
+
+    private const double BUFFER_MULTIPLIER = 1.0;
+    private const int MAX_MEMORY_POINTS = 10000;
+
+    private System.Timers.Timer _timer;
+
+    private DateTime _lastWheelSlide = DateTime.MinValue;
+    private static readonly TimeSpan WheelDebounce = TimeSpan.FromMilliseconds(200);
+
+    private double _mouseDownX;
+    private bool _isMouseDown;
+    private DateTime _lastDragSlide = DateTime.MinValue;
+    private static readonly TimeSpan DragDebounce = TimeSpan.FromMilliseconds(200);
+
+    private bool ShowMajorTicks = true;
+    private bool ShowMinorTicks = false;
+    private int MajorTickStep = 1;
+    private int MinorTickStep = 1;
+
+
+    // ═══════════════════════════════════════════════════════
+    //  CONFIGURATION MODELS
+    // ═══════════════════════════════════════════════════════
+
+    public class SeriesConfiguration
+    {
+        public string Name { get; set; } = "";
+        public string ChartType { get; set; } = "Line";
+        public string Color { get; set; } = "#116fd4";
+        public string LineStyle { get; set; } = "Solid";
+        public int LineWidth { get; set; } = 2;
+        public bool IsSmooth { get; set; } = true;
+        public bool ShowMarkers { get; set; } = false;
+        public string MarkerType { get; set; } = "Circle";
+        public int MarkerSize { get; set; } = 6;
+        public double AreaOpacity { get; set; } = 0.5;
+        public double BarGap { get; set; } = 1.5;
+        public int BorderWidth { get; set; } = 0;
+        public string BorderColor { get; set; } = "#000000";
+        public bool ShowDataLabels { get; set; } = false;
+        public string DataLabelFormat { get; set; } = "N0";
+        public string DataLabelPosition { get; set; } = "Above";
+        public string AxisAssignment { get; set; } = "Left";
+        public bool ShowTrendline { get; set; } = false;
+        public string TrendlineType { get; set; } = "Linear";
+        public string TrendlineColor { get; set; } = "#999999";
+        public bool IsHidden { get; set; } = false;
+        public bool IsExpanded { get; set; } = false;
+    }
+
+    public class YAxisConfiguration
+    {
+        public string Name { get; set; } = "";
+        public bool Visible { get; set; } = true;
+        public string Title { get; set; } = "";
+        public string Position { get; set; } = "Left";
+        public double? Min { get; set; } = 0;
+        public double? Max { get; set; } = null;
+        public string AxisColor { get; set; } = "#000000";
+        public bool ShowMajorTicks { get; set; } = true;
+        public double? MajorUnit { get; set; } = null;
+        public bool ShowMajorGridLines { get; set; } = true;
+        public string MajorGridDash { get; set; } = "Solid";
+        public bool ShowMinorTicks { get; set; } = false;
+        public double? MinorUnit { get; set; } = null;
+        public bool IsExpanded { get; set; } = true;
+    }
+
+    public class AxisConfiguration
+    {
+        public bool Visible { get; set; } = true;
+        public string Title { get; set; } = "";
+        public string AxisColor { get; set; } = "#000000";
+        public int MajorTickSize { get; set; } = 6;
+        public string MajorTickColor { get; set; } = "#000000";
+        public bool ShowMajorGridLines { get; set; } = true;
+        public double MajorGridWidth { get; set; } = 1.0;
+        public string MajorGridColor { get; set; } = "#dddddd";
+        public string MajorGridDash { get; set; } = "Solid";
+        public int MinorTickSize { get; set; } = 3;
+        public string MinorTickColor { get; set; } = "#888888";
+        public bool ShowMinorGridLines { get; set; } = false;
+        public double MinorGridWidth { get; set; } = 0.5;
+        public string MinorGridDash { get; set; } = "Dot";
+        public string MinorGridColor { get; set; } = "#dddddd";
+    }
+
+    public class PlotBandConfig
+    {
+        public double From { get; set; } = 0;
+        public double To { get; set; } = 100;
+        public string Color { get; set; } = "#ff000033";
+        public double Opacity { get; set; } = 0.2;
+        public string Label { get; set; } = "";
+    }
+
+    public class ChartTypeOption
+    {
+        public string Value { get; set; }
+        public string Label { get; set; }
+    }
+
+    public class AggregatedReading
+    {
+        public DateTime Time { get; set; }
+        public double Temperature { get; set; }
+        public double Pressure { get; set; }
+        public double Humidity { get; set; }
+        public double Voltage { get; set; }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  OPTIONS / DROPDOWN DATA
+    // ═══════════════════════════════════════════════════════
+
+    private List<FieldOption> XAxisOptions = new();
+    private List<FieldOption> YAxisOptions = new();
+
+    private List<FieldOption> RangePresets = new()
+    {
+        new FieldOption { Text = "30s", Value = "30s" },
+        new FieldOption { Text = "1m",  Value = "1m" },
+        new FieldOption { Text = "5m",  Value = "5m" },
+        new FieldOption { Text = "10m", Value = "10m" },
+        new FieldOption { Text = "30m", Value = "30m" },
+        new FieldOption { Text = "1h",  Value = "1h" },
+        new FieldOption { Text = "6h",  Value = "6h" },
+        new FieldOption { Text = "12h", Value = "12h" },
+        new FieldOption { Text = "1d",  Value = "1d" },
+    };
+
+    private List<string> LegendPositions = new() { "Top", "Bottom", "Left", "Right" };
+
+    private List<string> TrendlineTypes = new()
+    {
+        "Linear", "Polynomial", "Exponential", "MovingAverage"
+    };
+
+    private List<FieldOption> LineStyles = new()
+    {
+        new FieldOption { Text = "Solid",    Value = "Solid" },
+        new FieldOption { Text = "Dash",     Value = "Dash" },
+        new FieldOption { Text = "Dot",      Value = "Dot" },
+        new FieldOption { Text = "DashDot",  Value = "DashDot" },
+        new FieldOption { Text = "LongDash", Value = "LongDash" },
+    };
+
+    private List<FieldOption> MarkerTypes = new()
+    {
+        new FieldOption { Text = "Circle",   Value = "Circle" },
+        new FieldOption { Text = "Square",   Value = "Square" },
+        new FieldOption { Text = "Triangle", Value = "Triangle" },
+        new FieldOption { Text = "Cross",    Value = "Cross" },
+    };
+
+    private List<FieldOption> LabelFormats = new()
+    {
+        new FieldOption { Text = "Integer (N0)", Value = "N0" },
+        new FieldOption { Text = "Decimal (N2)", Value = "N2" },
+    };
+
+    private List<FieldOption> DataLabelPositions = new()
+    {
+        new FieldOption { Text = "Above",  Value = "Above" },
+        new FieldOption { Text = "Below",  Value = "Below" },
+        new FieldOption { Text = "Center", Value = "Center" },
+    };
+
+    private List<FieldOption> StackTypes = new()
+    {
+        new FieldOption { Text = "Normal",    Value = "Normal" },
+        new FieldOption { Text = "100% Stack", Value = "100" },
+    };
+
+    private List<FieldOption> DashTypes = new()
+    {
+        new FieldOption { Text = "Solid",      Value = "Solid" },
+        new FieldOption { Text = "Dash",       Value = "Dash" },
+        new FieldOption { Text = "Dot",        Value = "Dot" },
+        new FieldOption { Text = "Dash-Dot",   Value = "DashDot" },
+        new FieldOption { Text = "Long Dash",  Value = "LongDash" },
+    };
+
+    private List<FieldOption> YAxisAssignments = new()
+    {
+        new FieldOption { Text = "Left (Primary)",   Value = "Left" },
+        new FieldOption { Text = "Right (Secondary)", Value = "Right" },
+    };
+
+    private List<FieldOption> RenderModes = new()
+    {
+        new FieldOption { Text = "Canvas (Fast)",  Value = "Canvas" },
+        new FieldOption { Text = "SVG (Crisp)",    Value = "SVG" },
+    };
+
+    public class FieldOption
+    {
+        public string Text { get; set; }
+        public string Value { get; set; }
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  CHART TYPE OPTIONS
+    // ═══════════════════════════════════════════════════════
+
+    private List<ChartTypeOption> GetAvailableChartTypes() => new()
+    {
+        new() { Value = "Line",   Label = "Line" },
+        new() { Value = "Area",   Label = "Area" },
+        new() { Value = "Column", Label = "Column" },
+        new() { Value = "Bar",    Label = "Bar" },
+    };
+
+    // ═══════════════════════════════════════════════════════
+    //  INIT
+    // ═══════════════════════════════════════════════════════
+
+    protected override async Task OnInitializedAsync()
+    {
+        PopulateFieldOptionsFromModel();
+        await LoadDataForWindow(DateTime.Now);
+        StartTimer();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  SERIES CONFIG ACCESSORS
+    // ═══════════════════════════════════════════════════════
+
+    private SeriesConfiguration GetSeriesConfig(string name)
+    {
+        if (!SeriesConfigs.ContainsKey(name))
+        {
+            var index = SelectedYAxes.IndexOf(name);
+            SeriesConfigs[name] = new SeriesConfiguration
+            {
+                Name = name,
+                Color = GetDefaultColor(index),
+                ChartType = "Line"
+            };
+        }
+        return SeriesConfigs[name];
+    }
+
+    private void SetSeriesChartType(string name, string type)
+    {
+        GetSeriesConfig(name).ChartType = type;
+        _chartKey++;
+        StateHasChanged();
+    }
+
+    private void SetSeriesColor(string name, string color)
+    {
+        GetSeriesConfig(name).Color = color ?? "#116fd4";
+        _chartKey++;
+        StateHasChanged();
+    }
+
+    private void ToggleSeriesVisibility(string name)
+    {
+        var cfg = GetSeriesConfig(name);
+        cfg.IsHidden = !cfg.IsHidden;
+
+        if (cfg.IsHidden)
+            HiddenSeries.Add(name);
+        else
+            HiddenSeries.Remove(name);
+
+        _chartKey++;
+        StateHasChanged();
+    }
+
+    private void ToggleSeriesExpanded(string name)
+    {
+        var cfg = GetSeriesConfig(name);
+        cfg.IsExpanded = !cfg.IsExpanded;
+    }
+
+    private void MoveSeriesUp(string name)
+    {
+        var idx = SelectedYAxes.IndexOf(name);
+        if (idx <= 0) return;
+        SelectedYAxes.RemoveAt(idx);
+        SelectedYAxes.Insert(idx - 1, name);
+        _chartKey++;
+        StateHasChanged();
+    }
+
+    private void MoveSeriesDown(string name)
+    {
+        var idx = SelectedYAxes.IndexOf(name);
+        if (idx < 0 || idx >= SelectedYAxes.Count - 1) return;
+        SelectedYAxes.RemoveAt(idx);
+        SelectedYAxes.Insert(idx + 1, name);
+        _chartKey++;
+        StateHasChanged();
+    }
+
+    private void SetYAxisPosition(string axisId, string position)
+    {
+        var pos = position ?? "Left";
+        var yConfig = GetYAxisConfig(axisId);
+        yConfig.Position = pos;
+
+        if (SeriesConfigs.ContainsKey(axisId))
+            SeriesConfigs[axisId].AxisAssignment = pos == "Right" ? "Right" : "Left";
+
+        _chartKey++;
+        StateHasChanged();
+    }
+
+    private void SetYAxisVisible(string axisId, bool visible)
+    {
+        var yConfig = GetYAxisConfig(axisId);
+        yConfig.Visible = visible;
+
+        // If axis is hidden, hide its series (and trendline) so they are not rendered.
+        if (!visible)
+        {
+            if (SeriesConfigs.TryGetValue(axisId, out var sCfg))
+            {
+                sCfg.IsHidden = true;
+                HiddenSeries.Add(axisId);
+
+                if (sCfg.ShowTrendline)
+                    HiddenSeries.Add($"{axisId} Trend");
+            }
+        }
+        else
+        {
+            // When making axis visible again, restore series visibility only if it was auto-hidden by axis hide.
+            if (SeriesConfigs.TryGetValue(axisId, out var sCfg))
+            {
+                if (HiddenSeries.Contains(axisId))
+                {
+                    HiddenSeries.Remove(axisId);
+                    sCfg.IsHidden = false;
+                }
+
+                var trendName = $"{axisId} Trend";
+                if (HiddenSeries.Contains(trendName) && sCfg.ShowTrendline)
+                    HiddenSeries.Remove(trendName);
+            }
+        }
+
+        _chartKey++;
+        StateHasChanged();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  Y AXIS CONFIG ACCESSORS
+    // ═══════════════════════════════════════════════════════
+
+    private List<string> GetDistinctYAxes()
+    {
+        var axes = new List<string>();
+
+        foreach (var y in SelectedYAxes)
+        {
+            if (!axes.Contains(y))
+                axes.Add(y);
+        }
+
+        foreach (var key in YAxisConfigs.Keys)
+        {
+            if (!axes.Contains(key))
+                axes.Add(key);
+        }
+
+        return axes;
+    }
+
+    private async Task OnSelectedYAxesChanged(List<string> values)
+    {
+        var newSelection = values ?? new List<string>();
+
+        // determine removed series (present in configs but not in new selection)
+        var removed = SeriesConfigs.Keys.Except(newSelection).ToList();
+
+        foreach (var key in removed)
+        {
+            SeriesConfigs.Remove(key);
+            YAxisConfigs.Remove(key);
+            HiddenSeries.Remove(key);
+            HiddenSeries.Remove($"{key} Trend");
+        }
+
+        // update SelectedYAxes and force chart refresh
+        SelectedYAxes = newSelection;
+        _chartKey++;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private YAxisConfiguration GetYAxisConfig(string axisId)
+    {
+        if (!YAxisConfigs.ContainsKey(axisId))
+        {
+            var cfg = new YAxisConfiguration
+            {
+                Name = axisId,
+                Title = axisId
+            };
+
+            cfg.Position = "Left";
+
+            YAxisConfigs[axisId] = cfg;
+        }
+
+        return YAxisConfigs[axisId];
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  TYPE CONVERTERS & HELPERS
+    // ═══════════════════════════════════════════════════════
+
+    private ChartSeriesType GetSeriesType(string type) => type switch
+    {
+        "Line" => ChartSeriesType.Line,
+        "Area" => ChartSeriesType.Area,
+        "Bar" => ChartSeriesType.Column,
+        "Column" => ChartSeriesType.Column,
+        _ => ChartSeriesType.Line
+    };
+
+    private DashType GetDashType(string dash) => dash switch
+    {
+        "Solid" => DashType.Solid,
+        "Dash" => DashType.Dash,
+        "Dot" => DashType.Dot,
+        "DashDot" => DashType.DashDot,
+        "LongDash" => DashType.LongDash,
+        _ => DashType.Solid
+    };
+
+    private ChartSeriesMarkersType GetMarkerType(string type) => type switch
+    {
+        "Circle" => ChartSeriesMarkersType.Circle,
+        "Square" => ChartSeriesMarkersType.Square,
+        "Triangle" => ChartSeriesMarkersType.Triangle,
+        "Cross" => ChartSeriesMarkersType.Cross,
+        _ => ChartSeriesMarkersType.Circle
+    };
+
+    private ChartSeriesLabelsPosition GetLabelPosition(string pos) => pos switch
+    {
+        "Above" => ChartSeriesLabelsPosition.Above,
+        "Below" => ChartSeriesLabelsPosition.Below,
+        "Center" => ChartSeriesLabelsPosition.Center,
+        _ => ChartSeriesLabelsPosition.Above
+    };
+
+    private ChartSeriesStackType GetStackType() => SelectedStackType switch
+    {
+        "100" => ChartSeriesStackType.Stack100,
+        _ => ChartSeriesStackType.Normal
+    };
+
+    private RenderingMode GetRenderMode() => SelectedRenderMode switch
+    {
+        "SVG" => RenderingMode.SVG,
+        "Canvas" => RenderingMode.Canvas,
+        _ => RenderingMode.Canvas
+    };
+
+    private ChartSeriesType GetTrendlineSeriesType(string type) => type switch
+    {
+        "Linear" => ChartSeriesType.LinearTrendline,
+        "Polynomial" => ChartSeriesType.PolynomialTrendline,
+        "Exponential" => ChartSeriesType.ExponentialTrendline,
+        "MovingAverage" => ChartSeriesType.MovingAverageTrendline,
+        _ => ChartSeriesType.LinearTrendline
+    };
+
+    // Generate visually distinct default color per series index using golden-angle hue spacing.
+    private string GetDefaultColor(int index)
+    {
+        double hue = (index * 137.508) % 360.0;
+        return HslToHex(hue, 0.65, 0.55);
+    }
+
+    private static string HslToHex(double h, double s, double l)
+    {
+        h = h % 360;
+        double c = (1 - Math.Abs(2 * l - 1)) * s;
+        double x = c * (1 - Math.Abs((h / 60.0) % 2 - 1));
+        double m = l - c / 2.0;
+        double r1 = 0, g1 = 0, b1 = 0;
+
+        if (h < 60) { r1 = c; g1 = x; b1 = 0; }
+        else if (h < 120) { r1 = x; g1 = c; b1 = 0; }
+        else if (h < 180) { r1 = 0; g1 = c; b1 = x; }
+        else if (h < 240) { r1 = 0; g1 = x; b1 = c; }
+        else if (h < 300) { r1 = x; g1 = 0; b1 = c; }
+        else { r1 = c; g1 = 0; b1 = x; }
+
+        int r = (int)Math.Round((r1 + m) * 255.0);
+        int g = (int)Math.Round((g1 + m) * 255.0);
+        int b = (int)Math.Round((b1 + m) * 255.0);
+
+        r = Math.Clamp(r, 0, 255);
+        g = Math.Clamp(g, 0, 255);
+        b = Math.Clamp(b, 0, 255);
+
+        return $"#{r:X2}{g:X2}{b:X2}";
+    }
+
+    private string GetDefaultColorFromName(string name) => GetDefaultColor(Math.Abs(name.GetHashCode()) % 360);
+
+
+    private string GetSeriesColor(string seriesName)
+    {
+        if (string.IsNullOrEmpty(seriesName))
+            return TooltipBackground ?? "#ffffff";
+
+        if (SeriesConfigs.TryGetValue(seriesName, out var cfg) && !string.IsNullOrEmpty(cfg.Color))
+            return cfg.Color;
+
+        return GetDefaultColorFromName(seriesName);
+    }
+
+    private string GetContrastingTextColor(string hexColor)
+    {
+        if (string.IsNullOrWhiteSpace(hexColor)) return "#000000";
+
+        var c = hexColor.TrimStart('#');
+        if (c.Length == 3)
+            c = string.Concat(c[0], c[0], c[1], c[1], c[2], c[2]);
+
+        if (c.Length != 6) return "#000000";
+
+        int r = int.Parse(c.Substring(0, 2), System.Globalization.NumberStyles.HexNumber);
+        int g = int.Parse(c.Substring(2, 2), System.Globalization.NumberStyles.HexNumber);
+        int b = int.Parse(c.Substring(4, 2), System.Globalization.NumberStyles.HexNumber);
+
+        double luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+        return luminance > 0.6 ? "#000000" : "#ffffff";
+    }
+
+
+    private bool IsStackSupported(string chartType)
+    {
+        return chartType is "Line" or "Area" or "Bar" or "Column";
+    }
+
+    private ChartTitleAlign GetChartTitleAlign() => TitleAlignment switch
+    {
+        "Left" => ChartTitleAlign.Left,
+        "Right" => ChartTitleAlign.Right,
+        _ => ChartTitleAlign.Center
+    };
+
+    private object[] GetCategoryAxisCrossings()
+    {
+        var axes = GetDistinctYAxes();
+        var data = GetAggregatedVisibleData();
+        int count = Math.Max(1, data.Count);
+        var crossings = new List<object>();
+
+        foreach (var axisId in axes)
+        {
+            var cfg = GetYAxisConfig(axisId);
+            if (cfg.Position == "Right")
+            {
+                crossings.Add(count - 1);
+            }
+            else
+            {
+                crossings.Add(0);
+            }
+        }
+
+        // crossings.Add(double.MinValue);
+
+        return crossings.ToArray();
+    }
+
+
+    // ═══════════════════════════════════════════════════════
+    //  DATA LOADING
+    // ═══════════════════════════════════════════════════════
+
+    private async Task LoadDataForWindow(DateTime anchorMax)
+    {
+        int rangeSeconds = GetRangeSeconds();
+        int bufferSeconds = (int)(rangeSeconds * BUFFER_MULTIPLIER);
+
+        DateTime windowMin = anchorMax.AddSeconds(-rangeSeconds);
+        DateTime windowMax = anchorMax;
+
+        // Buffered fetch range (wider than visible)
+        DateTime fetchMin = windowMin.AddSeconds(-bufferSeconds);
+        DateTime fetchMax = windowMax.AddSeconds(bufferSeconds);
+
+        DateTime now = DateTime.Now;
+        if (fetchMax > now)
+            fetchMax = now;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        ChartData = await db.SensorReadings
+            .Where(x => x.Time >= fetchMin && x.Time <= fetchMax)
+            .OrderBy(x => x.Time)
+            .ToListAsync();
+
+        if (ChartData.Any())
+            _lastLoadedTime = ChartData.Max(x => x.Time);
+
+        VisibleMin = windowMin;
+        VisibleMax = windowMax;
+    }
+
+    private async Task SlideWindowTo(DateTime newMax)
+    {
+        int rangeSeconds = GetRangeSeconds();
+        DateTime newMin = newMax.AddSeconds(-rangeSeconds);
+
+        DateTime now = DateTime.Now;
+        if (newMax > now)
+        {
+            newMax = now;
+            newMin = newMax.AddSeconds(-rangeSeconds);
+        }
+
+        // Determine what we already have in memory
+        DateTime memoryMin = ChartData.Any() ? ChartData.Min(x => x.Time) : newMin;
+        DateTime memoryMax = ChartData.Any() ? ChartData.Max(x => x.Time) : newMax;
+
+        int bufferSeconds = (int)(rangeSeconds * BUFFER_MULTIPLIER);
+
+        DateTime desiredMin = newMin.AddSeconds(-bufferSeconds);
+        DateTime desiredMax = newMax.AddSeconds(bufferSeconds);
+        if (desiredMax > now) desiredMax = now;
+
+        bool needsOlderData = desiredMin < memoryMin;
+        bool needsNewerData = desiredMax > memoryMax;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        if (needsOlderData)
+        {
+            var olderData = await db.SensorReadings
+                .Where(x => x.Time >= desiredMin && x.Time < memoryMin)
+                .OrderBy(x => x.Time)
+                .ToListAsync();
+
+            if (olderData.Any())
+                ChartData.InsertRange(0, olderData);
+        }
+
+        if (needsNewerData)
+        {
+            var newerData = await db.SensorReadings
+                .Where(x => x.Time > memoryMax && x.Time <= desiredMax)
+                .OrderBy(x => x.Time)
+                .ToListAsync();
+
+            if (newerData.Any())
+            {
+                ChartData.AddRange(newerData);
+                _lastLoadedTime = newerData.Max(x => x.Time);
+            }
+        }
+
+        TrimDataAroundWindow(newMin, newMax, bufferSeconds);
+
+        VisibleMin = newMin;
+        VisibleMax = newMax;
+    }
+
+    private void TrimDataAroundWindow(DateTime windowMin, DateTime windowMax, int bufferSeconds)
+    {
+        if (!ChartData.Any()) return;
+
+        DateTime trimMin = windowMin.AddSeconds(-bufferSeconds);
+        DateTime trimMax = windowMax.AddSeconds(bufferSeconds);
+
+        if (ChartData.Count > MAX_MEMORY_POINTS ||
+            ChartData.Any(x => x.Time < trimMin || x.Time > trimMax))
+        {
+            ChartData = ChartData
+                .Where(x => x.Time >= trimMin && x.Time <= trimMax)
+                .ToList();
+        }
+    }
+
+    private List<SensorReading> GetVisibleData()
+    {
+        if (!VisibleMin.HasValue || !VisibleMax.HasValue)
+            return ChartData;
+
+        var padMin = VisibleMin.Value.AddSeconds(-2);
+        var padMax = VisibleMax.Value.AddSeconds(2);
+
+        return ChartData
+            .Where(x => x.Time >= padMin && x.Time <= padMax)
+            .ToList();
+    }
+
+    private List<AggregatedReading> GetAggregatedVisibleData()
+    {
+        var data = GetVisibleData();
+        if (!data.Any()) return new();
+
+        var unit = GetBaseUnit();
+
+        if (unit == ChartCategoryAxisBaseUnit.Seconds)
+        {
+            return data.Select(x => new AggregatedReading
+            {
+                Time = x.Time,
+                Temperature = x.Temperature,
+                Pressure = x.Pressure,
+                Humidity = x.Humidity,
+                Voltage = x.Voltage
+            }).ToList();
+        }
+
+        Func<DateTime, DateTime> groupKeyFunc = unit switch
+        {
+            ChartCategoryAxisBaseUnit.Minutes =>
+                dt => new DateTime(dt.Year, dt.Month, dt.Day, dt.Hour, dt.Minute, 0),
+            ChartCategoryAxisBaseUnit.Hours =>
+                dt => new DateTime(dt.Year, dt.Month, dt.Day, dt.Hour, 0, 0),
+            _ => dt => dt
+        };
+
+        var groups = data.GroupBy(x => groupKeyFunc(x.Time));
+
+        return groups.Select(g => new AggregatedReading
+        {
+            Time = g.Key,
+            // average sensor readings for grouped buckets
+            Temperature = g.Average(x => x.Temperature),
+            Pressure = g.Average(x => x.Pressure),
+            Humidity = g.Average(x => x.Humidity),
+            Voltage = g.Average(x => x.Voltage)
+        })
+        .OrderBy(x => x.Time)
+        .ToList();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  SLIDING WINDOW NAVIGATION
+    // ═══════════════════════════════════════════════════════
+
+    private int GetSlideStepSeconds()
+    {
+        int range = GetRangeSeconds();
+        return Math.Max(1, range / 10);
+    }
+
+    private async Task SlideWindowBack()
+    {
+        if (!VisibleMax.HasValue) return;
+
+        IsLiveMode = false;
+        IsPaused = true;
+        PausedByInteraction = true;
+
+        int stepSeconds = GetSlideStepSeconds();
+        DateTime newMax = VisibleMax.Value.AddSeconds(-stepSeconds);
+        _windowAnchorMax = newMax;
+
+        await SlideWindowTo(newMax);
+        StateHasChanged();
+    }
+
+    private async Task SlideWindowForward()
+    {
+        if (!VisibleMax.HasValue) return;
+
+        int stepSeconds = GetSlideStepSeconds();
+        DateTime newMax = VisibleMax.Value.AddSeconds(stepSeconds);
+
+        DateTime now = DateTime.Now;
+        if (newMax >= now.AddSeconds(-1))
+        {
+            await SnapToLive();
+            return;
+        }
+
+        _windowAnchorMax = newMax;
+        await SlideWindowTo(newMax);
+        StateHasChanged();
+    }
+
+    private async Task SnapToLive()
+    {
+        IsLiveMode = true;
+        IsPaused = false;
+        PausedByInteraction = false;
+        _windowAnchorMax = null;
+
+        await LoadDataForWindow(DateTime.Now);
+        StateHasChanged();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  MOUSE / WHEEL HANDLERS
+    // ═══════════════════════════════════════════════════════
+
+    private async Task OnChartWheel(WheelEventArgs args)
+    {
+        var now = DateTime.Now;
+        if ((now - _lastWheelSlide) < WheelDebounce) return;
+        _lastWheelSlide = now;
+
+        if (args.DeltaY > 0)
+            await SlideWindowBack();
+        else if (args.DeltaY < 0)
+            await SlideWindowForward();
+
+        _chartKey++;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnChartMouseDown(MouseEventArgs args)
+    {
+        _mouseDownX = args.ClientX;
+        _isMouseDown = true;
+
+        if (IsLiveMode && !IsPaused)
+        {
+            IsPaused = true;
+            PausedByInteraction = true;
+            IsLiveMode = false;
+            _windowAnchorMax = VisibleMax;
+        }
+    }
+
+    private async Task OnChartMouseMove(MouseEventArgs args)
+    {
+        if (!_isMouseDown) return;
+
+        var now = DateTime.Now;
+        if ((now - _lastDragSlide) < DragDebounce) return;
+
+        double dx = args.ClientX - _mouseDownX;
+        if (Math.Abs(dx) < 8) return;
+
+        _lastDragSlide = now;
+
+        if (IsLiveMode && !IsPaused)
+        {
+            IsPaused = true;
+            PausedByInteraction = true;
+            IsLiveMode = false;
+            _windowAnchorMax = VisibleMax;
+        }
+
+        int stepSeconds = GetSlideStepSeconds();
+        if (!VisibleMax.HasValue) return;
+
+        DateTime newMax = dx > 0
+            ? VisibleMax.Value.AddSeconds(-stepSeconds)
+            : VisibleMax.Value.AddSeconds(stepSeconds);
+
+        _windowAnchorMax = newMax;
+        _mouseDownX = args.ClientX;
+
+        await SlideWindowTo(newMax);
+        StateHasChanged();
+    }
+
+    private async Task OnChartMouseUp(MouseEventArgs args)
+    {
+        _isMouseDown = false;
+        if (IsPaused) _chartKey++;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnChartMouseLeave(MouseEventArgs args)
+    {
+        _isMouseDown = false;
+        if (IsPaused) _chartKey++;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  PAUSE / RESUME / TIMER
+    // ═══════════════════════════════════════════════════════
+
+    private async Task TogglePauseResume()
+    {
+        if (IsPaused)
+            await SnapToLive();
+        else
+        {
+            IsPaused = true;
+            PausedByInteraction = false;
+            IsLiveMode = false;
+            _windowAnchorMax = VisibleMax;
+        }
+        StateHasChanged();
+    }
+
+    private void StartTimer()
+    {
+        _timer = new System.Timers.Timer(RefreshIntervalMs);
+
+        _timer.Elapsed += async (s, e) =>
+        {
+            if (!IsLiveMode || IsPaused) return;
+
+            await InvokeAsync(async () =>
+            {
+                try
+                {
+                    await using var db = await DbFactory.CreateDbContextAsync();
+
+                    var newData = await db.SensorReadings
+                        .Where(x => x.Time > _lastLoadedTime)
+                        .OrderBy(x => x.Time)
+                        .ToListAsync();
+
+                    if (newData.Any())
+                    {
+                        ChartData.AddRange(newData);
+                        _lastLoadedTime = newData.Max(x => x.Time);
+                    }
+
+                    var latest = ChartData.Any()
+                        ? ChartData.Max(x => x.Time)
+                        : DateTime.Now;
+
+                    int rangeSeconds = GetRangeSeconds();
+                    VisibleMax = latest;
+                    VisibleMin = latest.AddSeconds(-rangeSeconds);
+
+                    int bufferSeconds = (int)(rangeSeconds * BUFFER_MULTIPLIER);
+                    TrimDataAroundWindow(VisibleMin.Value, VisibleMax.Value, bufferSeconds);
+
+                    StateHasChanged();
+                }
+                catch { }
+            });
+        };
+
+        _timer.AutoReset = true;
+        _timer.Start();
+    }
+
+    private void UpdateTimerInterval()
+    {
+        if (_timer == null) return;
+        _timer.Stop();
+        _timer.Interval = _refreshIntervalMs;
+        _timer.Start();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  RANGE CHANGE
+    // ═══════════════════════════════════════════════════════
+
+    private async Task ChangeRange(string range)
+    {
+        SelectedRange = range;
+        UpdateTimerInterval();
+
+        if (IsLiveMode)
+            await LoadDataForWindow(DateTime.Now);
+        else if (_windowAnchorMax.HasValue)
+            await LoadDataForWindow(_windowAnchorMax.Value);
+        else
+            await LoadDataForWindow(DateTime.Now);
+
+        StateHasChanged();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  LEGEND
+    // ═══════════════════════════════════════════════════════
+
+    private void OnLegendItemClick(ChartLegendItemClickEventArgs args)
+    {
+        var seriesName = args.Text;
+        if (string.IsNullOrEmpty(seriesName)) return;
+
+        if (HiddenSeries.Contains(seriesName))
+        {
+            HiddenSeries.Remove(seriesName);
+            if (SeriesConfigs.ContainsKey(seriesName))
+                SeriesConfigs[seriesName].IsHidden = false;
+        }
+        else
+        {
+            HiddenSeries.Add(seriesName);
+            if (SeriesConfigs.ContainsKey(seriesName))
+                SeriesConfigs[seriesName].IsHidden = true;
+        }
+
+        StateHasChanged();
+    }
+
+    private void ShowAllSeries()
+    {
+        HiddenSeries.Clear();
+        foreach (var cfg in SeriesConfigs.Values)
+            cfg.IsHidden = false;
+        StateHasChanged();
+    }
+
+    private void HideAllSeries()
+    {
+        foreach (var y in SelectedYAxes)
+        {
+            HiddenSeries.Add(y);
+            GetSeriesConfig(y).IsHidden = true;
+
+            if (GetSeriesConfig(y).ShowTrendline)
+                HiddenSeries.Add($"{y} Trend");
+        }
+        StateHasChanged();
+    }
+
+
+    // ═══════════════════════════════════════════════════════
+    //  PLOT BANDS
+    // ═══════════════════════════════════════════════════════
+
+    private void AddPlotBand()
+    {
+        PlotBands.Add(new PlotBandConfig
+        {
+            From = 0,
+            To = 100,
+            Color = "#ff6358",
+            Opacity = 0.15,
+            Label = $"Band {PlotBands.Count + 1}"
+        });
+    }
+
+    private void ResetToDefaults()
+    {
+        SeriesConfigs.Clear();
+        YAxisConfigs.Clear();
+        PlotBands.Clear();
+        HiddenSeries.Clear();
+        XAxisConfig = new();
+        SelectedRange = "30s";
+        ShowLegend = true;
+        ShowTooltip = true;
+        SharedTooltip = true;
+        IsStacked = false;
+        ShowMajorTicks = true;
+        ShowMinorTicks = false;
+        MajorTickStep = 1;
+        MinorTickStep = 1;
+        CategoryLabelRotation = -45;
+        ChartHeight = 550;
+        ChartBackground = "white";
+        TooltipBackground = "#e6e6e6";
+        EnableTransitions = false;
+        CustomChartTitle = "";
+        RefreshIntervalMs = 100;
+
+        // reset layout
+        ChartMarginTop = 8;
+        ChartMarginRight = 8;
+        ChartMarginBottom = 8;
+        ChartMarginLeft = 8;
+        PlotAreaPadding = 8;
+        TitleAlignment = "Center";
+
+        // reset global y-axis sync
+        SyncYAxisMinMax = false;
+        GlobalYAxisMin = null;
+        GlobalYAxisMax = null;
+
+        StateHasChanged();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  AXIS HELPERS
+    // ═══════════════════════════════════════════════════════
+
+    private ChartCategoryAxisBaseUnit GetBaseUnit() => SelectedRange switch
+    {
+        "30s" => ChartCategoryAxisBaseUnit.Seconds,
+        "1m" => ChartCategoryAxisBaseUnit.Seconds,
+        "5m" => ChartCategoryAxisBaseUnit.Minutes,
+        "10m" => ChartCategoryAxisBaseUnit.Minutes,
+        "30m" => ChartCategoryAxisBaseUnit.Minutes,
+        "1h" => ChartCategoryAxisBaseUnit.Minutes,
+        "6h" => ChartCategoryAxisBaseUnit.Hours,
+        "12h" => ChartCategoryAxisBaseUnit.Hours,
+        "1d" => ChartCategoryAxisBaseUnit.Hours,
+        _ => ChartCategoryAxisBaseUnit.Seconds
+    };
+
+    private int GetAutoBaseUnitStep() => 1;
+
+    private string GetAxisLabelFormat() => SelectedRange switch
+    {
+        "30s" => "HH:mm:ss",
+        "1m" => "HH:mm:ss",
+        "5m" => "HH:mm",
+        "10m" => "HH:mm",
+        "30m" => "HH:mm",
+        "1h" => "HH:mm",
+        "6h" => "HH:mm",
+        "12h" => "HH:mm",
+        "1d" => "dd-MM HH:mm",
+        _ => "HH:mm:ss"
+    };
+
+    private string GetTooltipTimeFormat() => SelectedRange switch
+    {
+        "30s" => "dd-MM-yyyy HH:mm:ss.fff",
+        "1m" => "dd-MM-yyyy HH:mm:ss.fff",
+        "5m" => "dd-MM-yyyy HH:mm:ss",
+        "10m" => "dd-MM-yyyy HH:mm:ss",
+        "30m" => "dd-MM-yyyy HH:mm:ss",
+        "1h" => "dd-MM-yyyy HH:mm:ss",
+        "6h" => "dd-MM-yyyy HH:mm",
+        "12h" => "dd-MM-yyyy HH:mm",
+        "1d" => "dd-MM-yyyy HH:mm",
+        _ => "dd-MM-yyyy HH:mm:ss.fff"
+    };
+
+    private int GetRangeSeconds() => SelectedRange switch
+    {
+        "30s" => 30,
+        "1m" => 60,
+        "5m" => 300,
+        "10m" => 600,
+        "30m" => 1800,
+        "1h" => 3600,
+        "6h" => 21600,
+        "12h" => 43200,
+        "1d" => 86400,
+        _ => 30
+    };
+
+    private string GetXAxisTitle()
+    {
+        if (string.IsNullOrEmpty(SelectedXAxis)) return "";
+
+        var unitName = GetBaseUnit() switch
+        {
+            ChartCategoryAxisBaseUnit.Seconds => "Seconds",
+            ChartCategoryAxisBaseUnit.Minutes => "Minutes",
+            ChartCategoryAxisBaseUnit.Hours => "Hours",
+            _ => ""
+        };
+
+        return $"Time — {SelectedRange} (in {unitName})";
+    }
+
+    private ChartLegendPosition GetLegendPosition() => SelectedLegendPosition switch
+    {
+        "Top" => ChartLegendPosition.Top,
+        "Bottom" => ChartLegendPosition.Bottom,
+        "Left" => ChartLegendPosition.Left,
+        _ => ChartLegendPosition.Right
+    };
+
+    private string GetDynamicChartTitle()
+    {
+        if (!string.IsNullOrEmpty(CustomChartTitle))
+            return CustomChartTitle;
+
+        if (!SelectedYAxes.Any())
+            return "Live Trend Chart";
+
+        var yDescriptions = SelectedYAxes
+            .Select(y =>
+            {
+                var cfg = GetSeriesConfig(y);
+                var visibility = cfg.IsHidden ? " [Hidden]" : "";
+                return $"{y} ({cfg.ChartType}){visibility}";
+            });
+
+        string stateText = (IsLiveMode && !IsPaused) ? "● Live"
+            : (IsPaused && PausedByInteraction) ? "⚠ Auto-Paused"
+            : IsPaused ? "⏸ Paused"
+            : "📜 History";
+
+        int visibleCount = SelectedYAxes.Count(y => !GetSeriesConfig(y).IsHidden && GetYAxisConfig(y).Visible);
+        int totalCount = SelectedYAxes.Count;
+
+        return $"{string.Join(", ", yDescriptions)} | {SelectedRange} | {stateText} | {visibleCount}/{totalCount}";
+    }
+
+    private void OpenChart() => ShowWindow = true;
+
+    // Auto set global Y min/max from currently visible aggregated data
+    private void AutoSetGlobalYRange()
+    {
+        var data = GetAggregatedVisibleData();
+        if (!data.Any() || !SelectedYAxes.Any())
+            return;
+
+        double min = double.MaxValue;
+        double max = double.MinValue;
+
+        foreach (var row in data)
+        {
+            foreach (var y in SelectedYAxes)
+            {
+                var prop = row.GetType().GetProperty(y);
+                if (prop == null) continue;
+                var val = prop.GetValue(row);
+                if (val == null) continue;
+                if (double.TryParse(val.ToString(), out var d))
+                {
+                    if (d < min) min = d;
+                    if (d > max) max = d;
+                }
+            }
+        }
+
+        if (min == double.MaxValue || max == double.MinValue) return;
+
+        GlobalYAxisMin = min;
+        GlobalYAxisMax = max;
+        StateHasChanged();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  Populate fields dynamically
+    // ═══════════════════════════════════════════════════════
+
+    private void PopulateFieldOptionsFromModel()
+    {
+        XAxisOptions.Clear();
+        YAxisOptions.Clear();
+
+        var props = typeof(SensorReading).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+
+        foreach (var p in props)
+        {
+            // Skip internal/identifier fields
+            if (string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var underlying = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
+
+            if (underlying == typeof(DateTime))
+            {
+                XAxisOptions.Add(new FieldOption { Text = p.Name, Value = p.Name });
+            }
+            else if (IsNumericType(underlying))
+            {
+                YAxisOptions.Add(new FieldOption { Text = p.Name, Value = p.Name });
+            }
+        }
+
+        // set sensible defaults if not already set
+        // if (string.IsNullOrEmpty(SelectedXAxis) && XAxisOptions.Any())
+        //     SelectedXAxis = XAxisOptions[0].Value;
+
+
+    }
+
+    private static bool IsNumericType(Type t)
+    {
+        var numericTypes = new HashSet<Type>
+        {
+            typeof(byte),
+            typeof(sbyte),
+            typeof(short),
+            typeof(ushort),
+            typeof(int),
+            typeof(uint),
+            typeof(long),
+            typeof(ulong),
+            typeof(float),
+            typeof(double),
+            typeof(decimal)
+        };
+
+        return numericTypes.Contains(t);
+    }
+
+    // ═══════════════════════════════════════════════════════
+
+    public void Dispose()
+    {
+        if (_timer != null)
+        {
+            _timer.Stop();
+            _timer.Dispose();
+        }
+    }
+}
+
+<style>
+    /* ================= MAIN LAYOUT ================= */
+
+    .chart-studio {
+        display: flex;
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+        background: #f5f6fa;
+        font-family: Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+
+    /* ================= SIDEBAR ================= */
+
+    .config-sidebar {
+        background: #ffffff;
+        border-right: 1px solid #e3e3e3;
+        display: flex;
+        flex-direction: column;
+        transition: width 0.25s ease;
+        overflow: visible;
+        font-size: 20px;
+        line-height: 1.35;
+        height: 100vh;
+        width: 550px;
+        min-width: 320px;
+    }
+
+        .config-sidebar.collapsed {
+            width: 80px !important;
+        }
+
+    .sidebar-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-right: 8px;
+    }
+
+    /* ================= SIDEBAR HEADER ================= */
+
+    .sidebar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 14px 16px;
+        border-bottom: 1px solid #e6e6e6;
+        background: #fafafa;
+    }
+
+        .sidebar-header h4 {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 20px;
+            margin: 0;
+            font-weight: 600;
+        }
+
+
+    /* ================= SIDEBAR CONTENT ================= */
+
+    .config-section {
+        padding: 14px 16px;
+    }
+
+    .section-title {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 10px;
+        color: #444;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+        .section-title.clickable {
+            cursor: pointer;
+        }
+
+
+    /* ================= CONFIG ROWS ================= */
+
+    .config-row {
+        margin-bottom: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+
+        .config-row.inline {
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .config-row label {
+            font-size: 18px;
+            color: #444;
+        }
+
+
+    /* ================= BUTTON GROUPS ================= */
+
+    .range-buttons,
+    .position-buttons,
+    .theme-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+
+    /* ================= SERIES CARD ================= */
+
+    .series-card {
+        border: 1px solid #e4e4e4;
+        border-radius: 6px;
+        margin-bottom: 10px;
+        background: #fff;
+    }
+
+        .series-card.hidden-series {
+            opacity: 0.55;
+        }
+
+    .series-card-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px;
+        cursor: pointer;
+        border-bottom: 1px solid #f0f0f0;
+        font-size: 18px;
+    }
+
+    .series-card-body {
+        padding: 10px;
+        font-size: 15px;
+    }
+
+    .series-name {
+        font-weight: 500;
+        flex: 1;
+    }
+
+    .series-type-badge {
+        font-size: 12px;
+        background: #eef2ff;
+        color: #3b4cca;
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
+
+    .series-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .series-color-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+    }
+
+
+    /* ================= COLOR PICKERS ================= */
+
+    .color-picker-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+    }
+
+    .color-swatch {
+        width: 18px;
+        height: 18px;
+        border-radius: 4px;
+        cursor: pointer;
+        border: 1px solid #ccc;
+    }
+
+        .color-swatch.selected {
+            border: 2px solid #000;
+        }
+
+    .custom-color-input {
+        width: 34px;
+        height: 22px;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+    }
+
+
+    /* ================= TICK GROUP ================= */
+
+    .tick-group {
+        border: 1px solid #ececec;
+        padding: 10px;
+        border-radius: 6px;
+        margin-top: 8px;
+        background: #fafafa;
+        font-size: 14px;
+    }
+
+
+    /* ================= AXIS BLOCK ================= */
+
+    .axis-config-block {
+        border: 1px solid #e4e4e4;
+        border-radius: 6px;
+        margin-bottom: 12px;
+        padding: 10px;
+        background: #fff;
+        font-size: 14px;
+    }
+
+
+    /* ================= PLOT BANDS ================= */
+
+    .plot-band-card {
+        border: 1px solid #e6e6e6;
+        border-radius: 6px;
+        padding: 10px;
+        margin-top: 10px;
+        background: #fafafa;
+        font-size: 14px;
+    }
+
+
+    /* ================= FOOTER ================= */
+
+    .sidebar-footer {
+        margin-top: auto;
+        padding: 12px 16px;
+        border-top: 1px solid #e6e6e6;
+        background: #fafafa;
+    }
+
+    .full-width-btn {
+        width: 100%;
+    }
+
+
+    /* ================= EMPTY STATE ================= */
+
+    .empty-state {
+        padding: 12px;
+        font-size: 14px;
+        color: #777;
+    }
+
+
+    /* ================= UTILITIES ================= */
+
+    .d-flex {
+        display: flex;
+    }
+
+    .gap-2 {
+        gap: 6px;
+    }
+
+    .text-muted {
+        font-size: 12px;
+        color: #777;
+    }
+</style>

@@ -1,4 +1,4 @@
-html, body {
+﻿html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
@@ -49,3 +49,429 @@ h1:focus {
 .darker-border-checkbox.form-check-input {
     border-color: #929292;
 }
+
+
+/* ═══════════════════════════════════════════════════════
+   CHART STUDIO STYLES
+   ═══════════════════════════════════════════════════════ */
+
+.chart-studio {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* ───── Sidebar ───── */
+.config-sidebar {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 12px;
+    padding: 16px;
+    overflow-y: auto;
+    max-height: 85vh;
+    transition: width 0.3s ease;
+}
+
+    .config-sidebar.collapsed {
+        width: 60px;
+        min-width: 60px;
+        padding: 8px;
+        overflow: hidden;
+    }
+
+.sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid #dee2e6;
+}
+
+    .sidebar-header h4 {
+        margin: 0;
+        font-size: 1.1rem;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+.sidebar-footer {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 2px solid #dee2e6;
+}
+
+/* ��──── Config Sections ───── */
+.config-section {
+    padding: 8px 0;
+}
+
+.section-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #495057;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+    .section-title.clickable {
+        cursor: pointer;
+    }
+
+        .section-title.clickable:hover {
+            color: #116fd4;
+        }
+
+.config-row {
+    margin-bottom: 10px;
+}
+
+    .config-row label {
+        display: block;
+        font-size: 0.82rem;
+        color: #6c757d;
+        margin-bottom: 4px;
+        font-weight: 500;
+    }
+
+    .config-row.inline {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+        .config-row.inline label {
+            margin-bottom: 0;
+        }
+
+/* ───── Range Buttons ───── */
+.range-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+    .range-buttons .k-button {
+        min-width: 42px;
+        padding: 2px 8px;
+        font-size: 0.78rem;
+    }
+
+/* ───── Series Cards ───── */
+.series-card {
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    overflow: hidden;
+    transition: all 0.2s ease;
+}
+
+    .series-card:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .series-card.hidden-series {
+        opacity: 0.5;
+    }
+
+.series-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    background: #fafafa;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+    .series-card-header:hover {
+        background: #f0f4ff;
+    }
+
+.series-color-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    border: 2px solid rgba(0,0,0,0.1);
+}
+
+.series-name {
+    font-weight: 600;
+    font-size: 0.88rem;
+    flex-grow: 1;
+}
+
+.series-type-badge {
+    background: #e8edf3;
+    color: #495057;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.72rem;
+    font-weight: 500;
+}
+
+.series-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.series-card-body {
+    padding: 12px;
+    background: white;
+}
+
+/* ───── Chart Type Selector ───── */
+.chart-type-selector {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.chart-type-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 60px;
+}
+
+    .chart-type-option:hover {
+        border-color: #116fd4;
+        background: #f0f4ff;
+    }
+
+    .chart-type-option.selected {
+        border-color: #116fd4;
+        background: #e3edff;
+    }
+
+.chart-type-icon {
+    font-size: 1.4rem;
+    margin-bottom: 2px;
+}
+
+.chart-type-option small {
+    font-size: 0.7rem;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+/* ───── Color Picker ───── */
+.color-picker-row {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.color-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.15s;
+}
+
+    .color-swatch:hover {
+        transform: scale(1.15);
+        border-color: #333;
+    }
+
+    .color-swatch.selected {
+        border-color: #000;
+        box-shadow: 0 0 0 2px white, 0 0 0 4px #116fd4;
+    }
+
+.custom-color-input {
+    width: 32px;
+    height: 24px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 0;
+    cursor: pointer;
+}
+
+/* ───── Tick Groups ───── */
+.tick-group {
+    background: #f8f9fa;
+    border-radius: 6px;
+    padding: 8px;
+    margin-bottom: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.axis-divider {
+    border-top: 2px solid #dee2e6;
+    margin: 16px 0;
+}
+
+.axis-config-block {
+    margin-bottom: 16px;
+}
+
+/* ───── Plot Band Cards ───── */
+.plot-band-card {
+    background: #fff3f3;
+    border: 1px solid #ffd0d0;
+    border-radius: 6px;
+    padding: 10px;
+    margin: 8px 0;
+}
+
+/* ───── Theme Buttons ───── */
+.theme-buttons,
+.position-buttons {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.full-width-btn {
+    width: 100%;
+}
+
+/* ───── Empty State ───── */
+.empty-state {
+    text-align: center;
+    padding: 24px;
+    color: #adb5bd;
+}
+
+/* ═══════════════════════════════════════════════════════
+   CHART WINDOW STYLES
+   ═══════════════════════════════════════════════════════ */
+
+.window-title-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.live-dot {
+    color: #28a745;
+    font-size: 1.2rem;
+    animation: pulse-live 1.5s infinite;
+}
+
+ @keyframes pulse-live {
+    0%, 100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.3;
+    }
+}
+
+/* ───── Toolbar ───── */
+.chart-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    border: 1px solid #e9ecef;
+}
+
+.toolbar-left,
+.toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.toolbar-divider {
+    width: 1px;
+    height: 24px;
+    background: #dee2e6;
+    margin: 0 4px;
+}
+
+/* ───── Status Badges ───── */
+.status-badge,
+.time-badge,
+.data-badge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+    .status-badge.live {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .status-badge.auto-paused {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .status-badge.paused {
+        background: #e2e3e5;
+        color: #383d41;
+    }
+
+    .status-badge.history {
+        background: #cce5ff;
+        color: #004085;
+    }
+
+.time-badge {
+    background: #f8f9fa;
+    color: #495057;
+    border: 1px solid #dee2e6;
+}
+
+.data-badge {
+    background: #e2e3e5;
+    color: #383d41;
+}
+
+/* ───── Scrollbar ───── */
+.config-sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.config-sidebar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.config-sidebar::-webkit-scrollbar-thumb {
+    background: #c0c0c0;
+    border-radius: 3px;
+}
+
+    .config-sidebar::-webkit-scrollbar-thumb:hover {
+        background: #a0a0a0;
+    }
+
+ /* ───── Responsive ───── */
+@media (max-width: 1200px) {
+    .chart-studio {
+        flex-direction: column;
+    }
+
+    .config-sidebar {
+        max-height: none;
+    }
+}
+
+

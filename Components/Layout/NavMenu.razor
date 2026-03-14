@@ -3,30 +3,36 @@
 @using Telerik.SvgIcons
 @inject NavigationManager NavManager
 
-<div class="nav-menu">
+@* <div class="nav-menu @(IsCollapsed ? "collapsed-menu" : "")">
     <div class="nav-header">
         <TelerikIcon Icon="@SvgIcon.TrackChanges" Class="logo-icon" />
-        <span class="brand-text">
-            CATALOG<span class="blue-text">PRO</span>
-        </span>
+        @if (!IsCollapsed)
+        {
+            <span class="brand-text">CATALOG<span class="blue-text">PRO</span></span>
+        }
     </div>
-
     <div class="nav-links">
         @foreach (var item in NavItems)
         {
             <div class="nav-item @(IsActive(item.Url) ? "active" : "")"
-                 @onclick="@(() => Navigate(item.Url))">
-
-                <TelerikIcon Icon="@item.Icon" Class="menu-icon" />
-                <span class="menu-text">@item.Text</span>
-
+                 @onclick="@(() => Navigate(item.Url))"
+                 title="@(IsCollapsed? item.Text: "")">
+                <div class="menu-icon">
+                    <TelerikIcon Icon="@item.Icon" />
+                </div>
+                @if (!IsCollapsed)
+                {
+                    <span class="menu-text">@item.Text</span>
+                }
             </div>
         }
     </div>
-</div>
+</div> *@
 
 @code {
+    [Parameter] public bool IsCollapsed { get; set; }
     private string CurrentUrl = "/";
+
 
     protected override void OnInitialized()
     {
@@ -46,18 +52,16 @@
         if (CurrentUrl == "/") CurrentUrl = "/";
     }
 
-    private bool IsActive(string url)
-        => CurrentUrl.Equals(url, StringComparison.OrdinalIgnoreCase);
-
-    private void Navigate(string url)
-        => NavManager.NavigateTo(url);
+    private bool IsActive(string url) => CurrentUrl.Equals(url, StringComparison.OrdinalIgnoreCase);
+    private void Navigate(string url) => NavManager.NavigateTo(url);
 
     private readonly List<NavItem> NavItems = new()
     {
         new NavItem { Text = "Dashboard", Icon = SvgIcon.Grid, Url = "/" },
         new NavItem { Text = "Inventory", Icon = SvgIcon.Window, Url = "/product-catalog" },
         new NavItem { Text = "Analytics", Icon = SvgIcon.ChartLine, Url = "/analytics" },
-        new NavItem { Text = "Support", Icon = SvgIcon.QuestionCircle, Url = "/help" }
+        new NavItem { Text = "Support", Icon = SvgIcon.QuestionCircle, Url = "/help" },
+        new NavItem { Text = "Chart", Icon = SvgIcon.ChartLine, Url = "/dynamic-chart" }
     };
 
     private class NavItem
@@ -69,104 +73,121 @@
 }
 
 <style>
-/* ---------- Layout ---------- */
 
-.nav-menu {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    background-color: #111827;
-}
+    /* ---------- Layout ---------- */
 
-.nav-header {
-    height: 64px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 0 20px;
-    border-bottom: 1px solid #1f2937;
-}
+    .nav-menu {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        background-color: #111827;
+    }
 
-.nav-links {
-    padding: 20px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
+    .nav-header {
+        height: 64px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 20px;
+        border-bottom: 1px solid #1f2937;
+    }
 
-/* ---------- Branding ---------- */
+    .nav-links {
+        padding: 20px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
 
-.logo-icon svg {
-    width: 26px;
-    height: 26px;
-    fill: #3b82f6;
-}
+    /* ---------- Branding ---------- */
 
-.brand-text {
-    font-weight: 700;
-    font-size: 1.1rem;
-    color: #ffffff;
-}
+    .logo-icon svg {
+        width: 26px;
+        height: 26px;
+        fill: #3b82f6;
+    }
 
-.blue-text {
-    color: #3b82f6;
-}
+    .brand-text {
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: #ffffff;
+    }
 
-/* ---------- Menu Items ---------- */
+    .blue-text {
+        color: #3b82f6;
+    }
 
-.nav-item {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 12px 16px;
-    border-radius: 8px;
-    cursor: pointer;
-    color: #9ca3af;
-    transition: background 0.2s, color 0.2s;
-}
+    /* ---------- Menu Items ---------- */
 
-/* Icon container */
-.menu-icon {
-    width: 20px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
+    .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 12px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        color: #9ca3af;
+        transition: background 0.2s, color 0.2s;
+    }
 
-/* SVG icon styling */
-.menu-icon svg {
-    width: 20px;
-    height: 20px;
-    fill: #9ca3af;
-}
+    /* Icon container */
+    .menu-icon {
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
 
-/* Text */
-.menu-text {
-    font-size: 0.95rem;
-    font-weight: 500;
-    line-height: 1;
-}
+        /* SVG icon styling */
+        .menu-icon svg {
+            width: 20px;
+            height: 20px;
+            fill: #9ca3af;
+            min-width: 20px;
+        }
 
-/* ---------- Hover ---------- */
+    /* Text */
+    .menu-text {
+        font-size: 0.95rem;
+        font-weight: 500;
+        line-height: 1;
+    }
 
-.nav-item:hover {
-    background-color: #1f2937;
-    color: #ffffff;
-}
+    /* ---------- Hover ---------- */
 
-.nav-item:hover .menu-icon svg {
-    fill: #ffffff;
-}
+    .nav-item:hover {
+        background-color: #1f2937;
+        color: #ffffff;
+    }
 
-/* ---------- Active ---------- */
+        .nav-item:hover .menu-icon svg {
+            fill: #ffffff;
+        }
 
-.nav-item.active {
-    background-color: #3b82f6;
-    color: #ffffff;
-}
+    /* ---------- Active ---------- */
 
-.nav-item.active .menu-icon svg {
-    fill: #ffffff;
-}
+    .nav-item.active {
+        background-color: #3b82f6;
+        color: #ffffff;
+    }
+
+        .nav-item.active .menu-icon svg {
+            fill: #ffffff;
+        }
+
+    .collapsed-menu .nav-header {
+        justify-content: center;
+        padding: 0;
+    }
+
+    .collapsed-menu .nav-item {
+        justify-content: center;
+        padding: 12px 0;
+    }
+
+    .collapsed-menu .nav-links {
+        padding: 20px 8px;
+    }
+
 </style>

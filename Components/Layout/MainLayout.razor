@@ -4,18 +4,21 @@
 @inject NavigationManager NavManager
 
 <TelerikRootComponent>
-    <div class="dashboard-wrapper">
-        <aside class="sidebar-container">
-            <NavMenu />
-        </aside>
+    <div class="dashboard-wrapper @(isSidebarCollapsed ? "collapsed" : "")">
+        @* <aside class="sidebar-container">
+            <NavMenu IsCollapsed="@isSidebarCollapsed" />
+        </aside> *@
 
         <main class="main-content">
             <header class="top-header">
-                <span class="breadcrumb">System / @CurrentPage</span>
-                <div class="header-actions">
+                <div class="header-left">
+                    <TelerikButton Icon="@SvgIcon.Menu" FillMode="flat" OnClick="@ToggleSidebar" />
+                    <span class="breadcrumb">System / @CurrentPage</span>
+                </div>
+                @* <div class="header-actions">
                     <TelerikButton Icon="@SvgIcon.Bell" FillMode="flat" />
                     <TelerikButton Icon="@SvgIcon.User" FillMode="flat" />
-                </div>
+                </div> *@
             </header>
             <article class="content-body">
                 <div class="content-card">
@@ -27,6 +30,11 @@
 </TelerikRootComponent>
 
 <style>
+    :root {
+        --sidebar-width: 260px;
+        --sidebar-collapsed-width: 80px;
+    }
+
     .dashboard-wrapper {
         display: flex;
         height: 100vh;
@@ -35,9 +43,15 @@
     }
 
     .sidebar-container {
-        width: 260px;
+        width: var(--sidebar-width);
         background-color: #111827;
         flex-shrink: 0;
+        transition: width 0.3s ease;
+    }
+
+
+    .dashboard-wrapper.collapsed .sidebar-container {
+        width: var(--sidebar-collapsed-width);
     }
 
     .main-content {
@@ -45,6 +59,7 @@
         display: flex;
         flex-direction: column;
         background-color: #f3f4f6;
+        transition: margin-left 0.3s ease;
     }
 
     .top-header {
@@ -55,6 +70,12 @@
         justify-content: space-between;
         padding: 0 24px;
         border-bottom: 1px solid #e5e7eb;
+    }
+
+    .header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
     }
 
     .breadcrumb {
@@ -79,11 +100,13 @@
 
 @code {
     private string CurrentPage = "Dashboard";
+    private bool isSidebarCollapsed = false;
+
+    private void ToggleSidebar() => isSidebarCollapsed = !isSidebarCollapsed;
 
     protected override void OnInitialized()
     {
         UpdateBreadcrumb(NavManager.Uri);
-
         NavManager.LocationChanged += (_, e) =>
         {
             UpdateBreadcrumb(e.Location);

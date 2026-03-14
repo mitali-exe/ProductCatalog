@@ -1,0 +1,237 @@
+﻿@page "/dynamic-chart-builder"
+@implements IDisposable
+
+@using Telerik.Blazor
+@using Telerik.Blazor.Components
+@using Microsoft.EntityFrameworkCore
+@using global::ProductCatalog.Models
+
+@inject AppDbContext DbContext
+
+<div class="container-fluid">
+    <h3>Real-Time Database Monitor</h3>
+
+    <div class="row mb-3 align-items-end">
+        <div class="col-md-3">
+            <label><strong>Time Interval:</strong></label>
+            <TelerikDropDownList Data="@TimeIntervals"
+                                 TextField="Text"
+                                 ValueField="Value"
+                                 @bind-Value="@SelectedInterval"
+                                 Width="100%"
+                                 OnChange="@OnIntervalChanged" />
+        </div>
+
+        <div class="col-md-4">
+            <label><strong>Metrics:</strong></label>
+            <TelerikMultiSelect Data="@YAxisFields"
+                                TextField="Text"
+                                ValueField="Value"
+                                @bind-Value="@SelectedYAxes"
+                                Width="100%" />
+        </div>
+
+        <div class="col-md-3">
+            <TelerikCheckBox @bind-Value="@_autoScroll" Id="autoScrollChk" />
+            <label for="autoScrollChk" class="ms-1"><strong>Follow Live Data</strong></label>
+        </div>
+    </div>
+
+    @if (SelectedYAxes.Any() && GroupedData.Any())
+    {
+        <TelerikChart Height="450px">
+            <ChartZoomable Enabled="true">
+                <ChartZoomableMousewheel Enabled="true" />
+            </ChartZoomable>
+            <ChartPannable Enabled="true" Lock="ChartAxisLock.Y" />
+
+            <ChartTooltip Visible="true" Shared="true" />
+
+            <ChartCategoryAxes>
+                <ChartCategoryAxis Type="ChartCategoryAxisType.Date"
+                                   BaseUnit="@GetBaseUnit()"
+                                   BaseUnitStep="@GetBaseUnitStep()"
+                                   Min="@VisibleMin"
+                                   Max="@VisibleMax">
+                    <ChartCategoryAxisLabels Format="HH:mm:ss" />
+                </ChartCategoryAxis>
+            </ChartCategoryAxes>
+
+            <ChartSeriesItems>
+                @foreach (var yField in SelectedYAxes)
+                {
+                    <ChartSeries Data="@GroupedData"
+                                 Field="@yField"
+                                 CategoryField="TimeBucket"
+                                 Type="ChartSeriesType.Line"
+                                 Name="@yField"
+                                 Style="ChartSeriesStyle.Smooth">
+                        <ChartSeriesMarkers Visible="false" />
+                    </ChartSeries>
+                }
+            </ChartSeriesItems>
+        </TelerikChart>
+    }
+    else
+    {
+        <div class="alert alert-secondary">Connecting to database and waiting for data...</div>
+    }
+</div>
+
+@code {
+    // --- Models ---
+    public class IntervalOption { public string Text { get; set; } public string Value { get; set; } }
+    public class FieldOption { public string Text { get; set; } public string Value { get; set; } }
+    public class TimeGroupedData
+    {
+        public DateTime TimeBucket { get; set; }
+        public double Sales { get; set; }
+        public double Revenue { get; set; }
+        public double Profit { get; set; }
+    }
+
+    // --- Config ---
+    private List<IntervalOption> TimeIntervals = new()
+    {
+        new() { Text = "10 Minutes", Value = "10m" },
+        new() { Text = "20 Minutes", Value = "20m" },
+        new() { Text = "1 Hour", Value = "1h" }
+    };
+
+    private List<FieldOption> YAxisFields = new()
+    {
+        new() { Text = "Sales", Value = "Sales" },
+        new() { Text = "Revenue", Value = "Revenue" },
+        new() { Text = "Profit", Value = "Profit" }
+    };
+
+    private string SelectedInterval = "10m";
+    private List<string> SelectedYAxes = new() { "Sales" };
+
+    // --- State ---
+    private List<SalesReport2> _rawData = new();
+    private List<TimeGroupedData> GroupedData = new();
+    private DateTime _lastLoadedTime = DateTime.MinValue;
+    private System.Timers.Timer _timer;
+    private bool _autoScroll = true;
+    private DateTime? VisibleMin;
+    private DateTime? VisibleMax;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInitialData();
+        StartTimer();
+    }
+
+    private async Task LoadInitialData()
+    {
+        // Load existing data from DB
+        _rawData = await DbContext.SalesReports2
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync();
+
+        if (_rawData.Any())
+            _lastLoadedTime = _rawData.Max(x => x.CreatedAt);
+
+        RegroupData();
+    }
+
+    private void StartTimer()
+    {
+        _timer = new System.Timers.Timer(5000); // Poll DB every 5 seconds
+        _timer.Elapsed += async (sender, args) =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadNewDataFromDb();
+            });
+        };
+        _timer.AutoReset = true;
+        _timer.Enabled = true;
+    }
+
+    private async Task LoadNewDataFromDb()
+    {
+        // Only fetch what's new since the last check
+        var newData = await DbContext.SalesReports2
+            .Where(x => x.CreatedAt > _lastLoadedTime)
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync();
+
+        if (newData.Any())
+        {
+            _rawData.AddRange(newData);
+            _lastLoadedTime = newData.Max(x => x.CreatedAt);
+
+            RegroupData();
+            StateHasChanged(); // Refresh the chart
+        }
+        else if (_autoScroll)
+        {
+            // Even if no NEW data is in DB, we update the window
+            // so the "Current Time" on the axis keeps moving.
+            RegroupData();
+            StateHasChanged();
+        }
+    }
+
+    private void RegroupData()
+    {
+        int minutes = SelectedInterval switch
+        {
+            "10m" => 10,
+            "20m" => 20,
+            "1h" => 60,
+            _ => 10
+        };
+
+        GroupedData = _rawData
+            .GroupBy(x => new DateTime(
+                x.CreatedAt.Year, x.CreatedAt.Month, x.CreatedAt.Day,
+                x.CreatedAt.Hour, (x.CreatedAt.Minute / minutes) * minutes, 0))
+            .Select(g => new TimeGroupedData
+            {
+                TimeBucket = g.Key,
+                Sales = g.Sum(x => x.Sales),
+                Revenue = g.Sum(x => x.Revenue),
+                Profit = g.Sum(x => x.Profit)
+            })
+            .OrderBy(x => x.TimeBucket)
+            .ToList();
+
+        // --- AUTO SCROLL LOGIC ---
+        if (_autoScroll)
+        {
+            // Setting Max to "Now" makes the chart move even if data is sparse
+            VisibleMax = DateTime.Now;
+
+            // Show a 1-hour window (60 mins)
+            VisibleMin = DateTime.Now.AddMinutes(-60);
+        }
+    }
+
+    private async Task OnIntervalChanged(object args)
+    {
+        RegroupData();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private ChartCategoryAxisBaseUnit GetBaseUnit() => SelectedInterval switch
+    {
+        "1h" => ChartCategoryAxisBaseUnit.Hours,
+        _ => ChartCategoryAxisBaseUnit.Minutes
+    };
+
+    private int GetBaseUnitStep() => SelectedInterval switch
+    {
+        "10m" => 10,
+        "20m" => 20,
+        _ => 1
+    };
+
+    public void Dispose()
+    {
+        _timer?.Stop();
+        _timer?.Dispose();
+    }
+}

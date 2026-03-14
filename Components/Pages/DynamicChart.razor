@@ -1,0 +1,1005 @@
+﻿@page "/dynamic-chart"
+
+@using Telerik.Blazor
+@using Telerik.Blazor.Components
+@using Microsoft.EntityFrameworkCore
+@using global::ProductCatalog.Models
+@implements IDisposable
+
+@inject AppDbContext DbContext
+
+<h3>Dynamic Chart</h3>
+
+<!-- Chart Type -->
+<div class="mb-3">
+    <label><strong>Select Chart Type:</strong></label>
+    <TelerikDropDownList Data="@ChartTypes"
+                         @bind-Value="@SelectedChartType"
+                         Width="200px" />
+</div>
+
+<!-- X Axis -->
+<div class="mb-3">
+    <label><strong>Select X-Axis Field:</strong></label>
+    <TelerikDropDownList Data="@XAxisFields"
+                         TextField="Text"
+                         ValueField="Value"
+                         @bind-Value="@SelectedXAxis"
+                         Width="250px"
+                         OnChange="@OnXAxisChanged" />
+</div>
+
+<!-- Time Interval (shown when Time axis selected) -->
+@if (SelectedXAxis == "Time")
+{
+    <div class="mb-3">
+        <label><strong>Time Interval:</strong></label>
+        <TelerikDropDownList Data="@TimeIntervals"
+                             TextField="Text"
+                             ValueField="Value"
+                             @bind-Value="@SelectedInterval"
+                             Width="200px"
+                             OnChange="@OnIntervalChanged" />
+    </div>
+}
+
+<!-- Y Axis -->
+<div class="mb-3">
+    <label><strong>Select Y-Axis Field(s):</strong></label>
+    <TelerikMultiSelect Data="@YAxisFields"
+                        TextField="Text"
+                        ValueField="Value"
+                        @bind-Value="@SelectedYAxes"
+                        Width="300px" />
+</div>
+
+<div class="mb-3">
+    <label><strong>Show Trendline:</strong></label>
+    <TelerikCheckBox @bind-Value="ShowTrendline" /> &nbsp; &nbsp;
+
+    <label for="legendChk"><strong>Show Legend:</strong></label>
+    <TelerikCheckBox @bind-Value="ShowLegend" Id="legendChk" /> &nbsp; &nbsp;
+
+    @if (SelectedXAxis == "Time")
+    {
+        <label for="autoScrollChk"><strong>Follow Live Data:</strong></label>
+        <TelerikCheckBox Value="_autoScroll"
+                         ValueChanged="@((bool val) => OnAutoScrollChanged(val))"
+                         ValueExpression="() => _autoScroll"
+                         Id="autoScrollChk"
+                         Enabled="@IsAutoScrollEnabled" />
+    }
+</div>
+
+<div class="mb-3">
+    <label><strong>Legend Position:</strong></label>
+    <TelerikDropDownList Data="@LegendPositions"
+                         @bind-Value="@SelectedLegendPosition"
+                         Width="200px" />
+</div>
+
+@if (!string.IsNullOrEmpty(SelectedXAxis) && SelectedYAxes.Any())
+{
+    <div class="mb-3">
+        <label><strong>Select Date Range:</strong></label>
+        <div class="d-flex gap-2 align-items-center">
+
+            <TelerikDateTimePicker @bind-Value="RangeStart"
+                                   Width="200px"
+                                   Format="yyyy-MM-dd HH:mm"
+                                   Enabled="@(string.IsNullOrEmpty(SelectedPreset))" />
+
+            <span>to</span>
+
+            <TelerikDateTimePicker @bind-Value="RangeEnd"
+                                   Width="200px"
+                                   Format="yyyy-MM-dd HH:mm"
+                                   Enabled="@(string.IsNullOrEmpty(SelectedPreset))" />
+
+            <TelerikButton OnClick="ApplyDateRange">
+                Apply
+            </TelerikButton>
+
+        </div>
+    </div>
+
+    <div class="mb-3">
+        <label><strong>Quick Range:</strong></label>
+
+        <TelerikDropDownList Data="@Presets"
+                             TextField="Text"
+                             ValueField="Value"
+                             @bind-Value="@SelectedPreset"
+                             Width="250px"
+                             DefaultText="Select Preset"
+                             OnChange="@OnPresetChanged" />
+
+        <TelerikButton OnClick="ClearRange"
+                       ThemeColor="ThemeColor.Light"
+                       Enabled="@(RangeStart != null || RangeEnd != null)">
+            Clear
+        </TelerikButton>
+
+    </div>
+
+    <TelerikChart Height="500px"
+                  Transitions="false"
+                  RenderAs="RenderingMode.Canvas">
+
+        <ChartTitle Text="@GetChartTitle()" />
+        <ChartLegend Visible="@ShowLegend"
+                     Position="@GetLegendPosition()" />
+
+        <ChartZoomable Enabled="true">
+            <ChartZoomableMousewheel Enabled="true" />
+        </ChartZoomable>
+
+        <ChartPannable Enabled="true" />
+
+        <ChartTooltip Visible="true" Shared="true">
+            <SharedTemplate Context="context">
+                @{
+
+
+                    string categoryText = "";
+
+                    if (SelectedXAxis == "Months")
+                    {
+                        var firstPoint = context.Points.FirstOrDefault();
+                        var item = firstPoint?.DataItem as MonthlyGroupedData;
+
+                        categoryText = item?.MonthLabel ?? "";
+                    }
+
+                    else if (SelectedXAxis == "Time")
+                    {
+                        var firstPoint = context.Points.FirstOrDefault();
+                        var item = firstPoint?.DataItem as TimeGroupedData;
+
+                        string timeFormat = SelectedInterval switch
+                        {
+                            "1s" or "5s" or "10s" or "20s" or "30s" or "1m" or "5m" or "10m" or "20m" or "30m" or "1h"
+                            => "yyyy-MM-dd HH:mm:ss.ff",
+
+                            "1d" => "yyyy-MM-dd",
+                            "1y" => "yyyy",
+                            _ => "yyyy-MM-dd HH:mm"
+                        };
+
+                        var exact = item.ExactTime ?? item.TimeBucket;
+                        categoryText = "Time: " + exact.ToString(timeFormat);
+                    }
+                    else
+                    {
+                        categoryText = context.Category?.ToString();
+                    }
+                }
+
+                <div>
+                    <strong>@categoryText</strong>
+                    <hr style="margin:5px 0;" />
+
+                    @foreach (var point in context.Points)
+                    {
+                        var dataItem = point.DataItem;
+                        var prop = dataItem?.GetType().GetProperty(point.SeriesName);
+                        var value = prop?.GetValue(dataItem);
+
+
+                        double number = 0;
+
+                        if (value != null && double.TryParse(value.ToString(), out number))
+                        {
+                            <div>
+                                @point.SeriesName:
+                                <strong>@number.ToString("N2")</strong>
+                            </div>
+                        }
+
+                        @* <div>
+                            @point.SeriesName: <strong>@value</strong>
+                        </div> *@
+                    }
+
+                    @* @if (item != null)
+                    {
+                        <div style="margin-top:6px; font-size: 0.85em; opacity:0.8;">
+                            Samples in bucket: @item.SampleCount
+                        </div>
+                    } *@
+                </div>
+            </SharedTemplate>
+        </ChartTooltip>
+
+        @if (SelectedXAxis == "Time")
+        {
+            <ChartCategoryAxes>
+                <ChartCategoryAxis Type="ChartCategoryAxisType.Date"
+                                   BaseUnit="@GetBaseUnit()"
+                                   BaseUnitStep="@GetBaseUnitStep()"
+                                   Min="@VisibleMin"
+                                   Max="@VisibleMax">
+
+                    <ChartCategoryAxisTitle Text="@GetXAxisTitle()" />
+                    <ChartCategoryAxisLabels Format="@GetAxisLabelFormat()">
+                        <ChartCategoryAxisLabelsRotation Angle="-45" />
+                    </ChartCategoryAxisLabels>
+                </ChartCategoryAxis>
+            </ChartCategoryAxes>
+
+            <ChartSeriesItems>
+                @foreach (var yField in SelectedYAxes)
+                {
+                    <ChartSeries Data="@GroupedData"
+                                 Field="@yField"
+                                 CategoryField="TimeBucket"
+                                 Type="@GetChartSeriesType()"
+                                 Name="@yField"
+                                 Style="ChartSeriesStyle.Smooth">
+                        <ChartSeriesMarkers Visible="false" />
+
+
+                    </ChartSeries>
+
+                    @if (ShowTrendline && !_autoScroll)
+                    {
+                        <ChartSeries Type="@GetTrendlineSeriesType()"
+                                     For="@yField"
+                                     Name="@($"{yField} Trend")">
+                            <ChartSeriesTooltip Visible="false" />
+                            <ChartSeriesMarkers Visible="false" />
+                        </ChartSeries>
+                    }
+                }
+            </ChartSeriesItems>
+        }
+        else
+        {
+            <ChartValueAxes>
+                @foreach (var yField in SelectedYAxes)
+                {
+                    <ChartCategoryAxes>
+                        <ChartCategoryAxis>
+                            <ChartCategoryAxisTitle Text="@GetXAxisTitle()" />
+                            <ChartCategoryAxisLabels>
+                                <ChartCategoryAxisLabelsRotation Angle="-45" />
+                            </ChartCategoryAxisLabels>
+                        </ChartCategoryAxis>
+                    </ChartCategoryAxes>
+
+                    <ChartValueAxis Name="@yField">
+                        <ChartValueAxisTitle Text="@yField" />
+                    </ChartValueAxis>
+                }
+            </ChartValueAxes>
+
+            <ChartSeriesItems>
+                @foreach (var yField in SelectedYAxes)
+                {
+                    <ChartSeries Data="@(SelectedXAxis == "Months" ? MonthlyData : Data)"
+                                 Field="@yField"
+                                 CategoryField="@(SelectedXAxis == "Months" ? "MonthLabel" : SelectedXAxis)"
+                                 Type="@GetChartSeriesType()"
+                                 Name="@yField"
+                                 Axis="@yField">
+                    </ChartSeries>
+
+                    @if (ShowTrendline && !_autoScroll)
+                    {
+                        <ChartSeries Type="@GetTrendlineSeriesType()"
+                                     For="@yField"
+                                     Name="@($"{yField} Trend")"
+                                     Axis="@yField">
+                            <ChartSeriesTooltip Visible="false" />
+                            <ChartSeriesMarkers Visible="false" />
+                        </ChartSeries>
+                    }
+                }
+            </ChartSeriesItems>
+        }
+    </TelerikChart>
+}
+else
+{
+    <div class="alert alert-secondary">Select X-axis and at least one Y-axis.</div>
+}
+
+@code {
+
+    // Chart Type Selection
+    private List<string> ChartTypes = new() { "Column", "Line", "Bar", "Area" };
+    private string SelectedChartType = "Line";
+    private bool ShowTrendline = false;
+    private bool ShowLegend = true;
+    private bool IsAutoScrollEnabled = true;
+
+    private DateTime? RangeStart;
+    private DateTime? RangeEnd;
+
+    // Axis Fields
+    private string SelectedXAxis;
+    private List<string> SelectedYAxes = new();
+
+    private string SelectedLegendPosition = "Right";
+
+    // Dropdown Field Models
+    public class FieldOption
+    {
+        public string Text { get; set; }
+        public string Value { get; set; }
+    }
+
+    public class IntervalOption
+    {
+        public string Text { get; set; }
+        public string Value { get; set; }
+    }
+
+    // X Axis Options
+    private List<FieldOption> XAxisFields = new()
+    {
+        new FieldOption { Text = "Months", Value = "Months" },
+        new FieldOption { Text = "Time", Value = "Time" }
+    };
+
+    // Time interval options (kept as before)
+    private List<IntervalOption> TimeIntervals = new()
+    {
+        new IntervalOption { Text = "1 Second", Value = "1s" },
+        new IntervalOption { Text = "5 Seconds", Value = "5s" },
+        new IntervalOption { Text = "10 Seconds", Value = "10s" },
+        new IntervalOption { Text = "20 Seconds", Value = "20s" },
+        new IntervalOption { Text = "30 Seconds", Value = "30s" },
+        new IntervalOption { Text = "1 Minute", Value = "1m" },
+        new IntervalOption { Text = "5 Minutes", Value = "5m" },
+        new IntervalOption { Text = "10 Minutes", Value = "10m" },
+        new IntervalOption { Text = "20 Minutes", Value = "20m" },
+        new IntervalOption { Text = "30 Minutes", Value = "30m" },
+        new IntervalOption { Text = "1 Hour", Value = "1h" },
+        new IntervalOption { Text = "1 Day", Value = "1d" },
+        new IntervalOption { Text = "1 Year", Value = "1y" }
+    };
+
+    // Y Axis Options
+    private List<FieldOption> YAxisFields = new()
+    {
+        new FieldOption { Text = "Sales", Value = "Sales" },
+        new FieldOption { Text = "Revenue", Value = "Revenue" },
+        new FieldOption { Text = "Profit", Value = "Profit" }
+    };
+
+    // Non-time data loaded from database
+    private List<SalesReport2> Data = new();
+
+    // Time-based raw and grouped data
+    private List<SalesReport2> _rawTimeData = new();
+    private List<TimeGroupedData> GroupedData = new();
+    private List<MonthlyGroupedData> MonthlyData = new();
+    private string SelectedPreset;
+
+    // Interval / auto-scroll state
+    private string SelectedInterval = "10m";
+    private System.Timers.Timer _timer;
+    private DateTime _lastLoadedTime = DateTime.MinValue;
+    private bool _autoScroll = false;
+    private DateTime? VisibleMin;
+    private DateTime? VisibleMax;
+
+
+    public class TimeGroupedData
+    {
+        public DateTime TimeBucket { get; set; }
+        public double Sales { get; set; }
+        public double Revenue { get; set; }
+        public double Profit { get; set; }
+
+        public DateTime? ExactTime { get; set; }
+        public int SampleCount { get; set; }
+    }
+
+    public class MonthlyGroupedData
+    {
+        public string MonthLabel { get; set; }
+        public int Year { get; set; }
+        public int Month { get; set; }
+
+        public double Sales { get; set; }
+        public double Revenue { get; set; }
+        public double Profit { get; set; }
+    }
+
+    public class PresetOption
+    {
+        public string Text { get; set; }
+        public string Value { get; set; }
+    }
+
+    private List<PresetOption> Presets = new()
+    {
+        new PresetOption { Text = "Last 1 Hour", Value = "1H" },
+        new PresetOption { Text = "Last 24 Hours", Value = "24H" },
+        new PresetOption { Text = "Last 7 Days", Value = "7D" },
+        new PresetOption { Text = "Last 30 Days", Value = "30D" },
+        new PresetOption { Text = "This Month", Value = "THIS_MONTH" },
+        new PresetOption { Text = "This Year", Value = "THIS_YEAR" }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load data
+        await LoadData();
+
+        await LoadInitialTimeData();
+
+        StartTimer();
+    }
+
+    private string GetChartTitle()
+    {
+        if (string.IsNullOrEmpty(SelectedXAxis) || !SelectedYAxes.Any())
+            return "Dynamic Chart";
+
+        var yText = string.Join(", ", SelectedYAxes);
+
+        return SelectedXAxis == "Time"
+            ? $"{yText} over Time ({SelectedInterval})"
+            : $"{yText} by {SelectedXAxis}";
+    }
+
+    private string GetXAxisTitle()
+    {
+        if (string.IsNullOrEmpty(SelectedXAxis))
+            return string.Empty;
+
+        return SelectedXAxis == "Time"
+            ? $"Time ({SelectedInterval})"
+            : SelectedXAxis;
+    }
+
+    private async Task OnPresetChanged(object args)
+    {
+        if (string.IsNullOrEmpty(SelectedPreset))
+            return;
+
+        var now = DateTime.Now;
+
+        _autoScroll = false;
+        IsAutoScrollEnabled = false;
+
+        switch (SelectedPreset)
+        {
+            case "1H":
+                RangeStart = now.AddHours(-1);
+                RangeEnd = now;
+                break;
+
+            case "24H":
+                RangeStart = now.AddHours(-24);
+                RangeEnd = now;
+                break;
+
+            case "7D":
+                RangeStart = now.AddDays(-7);
+                RangeEnd = now;
+                break;
+
+            case "30D":
+                RangeStart = now.AddDays(-30);
+                RangeEnd = now;
+                break;
+
+            case "THIS_MONTH":
+                RangeStart = new DateTime(now.Year, now.Month, 1);
+                RangeEnd = now;
+                break;
+
+            case "THIS_YEAR":
+                RangeStart = new DateTime(now.Year, 1, 1);
+                RangeEnd = now;
+                break;
+        }
+
+        await ApplyDateRange();
+    }
+
+    private async Task ClearRange()
+    {
+        RangeStart = null;
+        RangeEnd = null;
+
+        SelectedPreset = null;
+        _autoScroll = false;
+        IsAutoScrollEnabled = true;
+
+        await LoadData();
+
+        if (SelectedXAxis == "Time")
+        {
+            await LoadInitialTimeData();
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnAutoScrollChanged(bool value)
+    {
+        _autoScroll = value;
+
+        if (SelectedXAxis != "Time")
+            return;
+
+        if (_autoScroll)
+        {
+            // When checked: follow live data
+            UpdateVisibleWindowOnly();
+        }
+        else
+        {
+            // When unchecked: restore original full range or preset
+            if (!string.IsNullOrEmpty(SelectedPreset))
+            {
+                await OnPresetChanged(null);
+            }
+            else if (RangeStart != null && RangeEnd != null)
+            {
+                await ApplyDateRange();
+            }
+            else
+            {
+                VisibleMin = null;
+                VisibleMax = null;
+                RegroupData();
+            }
+        }
+
+        RegroupData();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadData()
+    {
+        var rawData = await DbContext.SalesReports2
+                                     .ToListAsync();
+
+        if (SelectedXAxis == "Months")
+        {
+            MonthlyData = rawData
+                .GroupBy(x => new { x.CreatedAt.Year, x.CreatedAt.Month })
+                .Select(g => new MonthlyGroupedData
+                {
+                    Year = g.Key.Year,
+                    Month = g.Key.Month,
+                    MonthLabel = new DateTime(g.Key.Year, g.Key.Month, 1)
+                                    .ToString("MMMM yyyy"),
+                    Sales = g.Sum(x => x.Sales),
+                    Revenue = g.Sum(x => x.Revenue),
+                    Profit = g.Sum(x => x.Profit)
+                })
+                .OrderBy(x => x.Year)
+                .ThenBy(x => x.Month)
+                .ToList();
+        }
+        else
+        {
+            Data = rawData
+                .OrderBy(x => x.Id)
+                .ToList();
+        }
+    }
+
+    private async Task LoadInitialTimeData()
+    {
+        try
+        {
+            _rawTimeData = await DbContext.SalesReports2
+                                          .OrderBy(x => x.CreatedAt)
+                                          .ToListAsync();
+
+            if (_rawTimeData.Any())
+            {
+                _lastLoadedTime = _rawTimeData.Max(x => x.CreatedAt);
+            }
+
+            RegroupData();
+        }
+        catch
+        {
+            _rawTimeData = new();
+            GroupedData = new();
+        }
+    }
+
+    private void StartTimer()
+    {
+        _timer = new System.Timers.Timer(1000); // poll every second
+        _timer.Elapsed += async (sender, args) =>
+        {
+            await InvokeAsync(async () =>
+            {
+                try
+                {
+                    // Load only new rows
+                    var newData = await DbContext.SalesReports2
+                        .Where(x => x.CreatedAt > _lastLoadedTime)
+                        .OrderBy(x => x.CreatedAt)
+                        .ToListAsync();
+
+                    if (newData.Any())
+                    {
+                        // Append new rows
+                        _rawTimeData.AddRange(newData);
+                        _lastLoadedTime = newData.Max(x => x.CreatedAt);
+
+                        RegroupData();
+                        StateHasChanged();
+                    }
+                }
+                catch
+                {
+                    // ignore DB errors
+                }
+            });
+        };
+        _timer.AutoReset = true;
+        _timer.Enabled = true;
+    }
+
+    private async Task LoadNewTimeDataFromDb()
+    {
+        if (DbContext is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var newData = await DbContext.SalesReports2
+                                         .Where(x => x.CreatedAt > _lastLoadedTime)
+                                         .OrderBy(x => x.CreatedAt)
+                                         .ToListAsync();
+
+            if (newData.Any())
+            {
+                _rawTimeData.AddRange(newData);
+                _lastLoadedTime = newData.Max(x => x.CreatedAt);
+
+                RegroupData();
+                await InvokeAsync(StateHasChanged);
+            }
+            else if (_autoScroll && SelectedXAxis == "Time")
+            {
+                UpdateVisibleWindowOnly();
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            
+        }
+    }
+
+    private void UpdateVisibleWindowOnly()
+    {
+        var now = DateTime.Now;
+        VisibleMax = now;
+        VisibleMin = now.AddMinutes(-60);
+    }
+
+    private List<string> LegendPositions = new()
+    {
+        "Top",
+        "Bottom",
+        "Left",
+        "Right"
+    };
+
+    private ChartLegendPosition GetLegendPosition()
+    {
+        return SelectedLegendPosition switch
+        {
+            "Bottom" => ChartLegendPosition.Bottom,
+            "Left" => ChartLegendPosition.Left,
+            "Right" => ChartLegendPosition.Right,
+            _ => ChartLegendPosition.Top
+        };
+    }
+
+    private async Task ApplyDateRange()
+    {
+        if (RangeStart == null || RangeEnd == null)
+            return;
+
+        _autoScroll = false;
+        IsAutoScrollEnabled = false;
+
+        if (SelectedXAxis == "Time")
+        {
+            _rawTimeData = await DbContext.SalesReports2
+                .Where(x => x.CreatedAt >= RangeStart &&
+                            x.CreatedAt <= RangeEnd)
+                .OrderBy(x => x.CreatedAt)
+                .ToListAsync();
+
+            RegroupData();
+
+            VisibleMin = RangeStart;
+            VisibleMax = RangeEnd;
+        }
+        else if (SelectedXAxis == "Months")
+        {
+            var raw = await DbContext.SalesReports2
+                .Where(x => x.CreatedAt >= RangeStart &&
+                            x.CreatedAt <= RangeEnd)
+                .ToListAsync();
+
+            MonthlyData = raw
+                .GroupBy(x => new { x.CreatedAt.Year, x.CreatedAt.Month })
+                .Select(g => new MonthlyGroupedData
+                {
+                    Year = g.Key.Year,
+                    Month = g.Key.Month,
+                    MonthLabel = new DateTime(g.Key.Year, g.Key.Month, 1)
+                                    .ToString("MMMM yyyy"),
+                    Sales = g.Sum(x => x.Sales),
+                    Revenue = g.Sum(x => x.Revenue),
+                    Profit = g.Sum(x => x.Profit)
+                })
+                .OrderBy(x => x.Year)
+                .ThenBy(x => x.Month)
+                .ToList();
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void RegroupData()
+    {
+        if (!_rawTimeData.Any())
+        {
+            GroupedData = new();
+            return;
+        }
+
+        List<TimeGroupedData> allGrouped = SelectedInterval switch
+        {
+            "1s" or "5s" or "10s" or "20s" or "30s" => GroupBySeconds(),
+            "1m" or "5m" or "10m" or "20m" or "30m" or "1h" => GroupByMinutesOrHours(),
+            "1d" => GroupByDays(),
+            "1y" => GroupByYears(),
+            _ => GroupByMinutesOrHours()
+        };
+
+        if (_autoScroll && SelectedXAxis == "Time")
+        {
+            var now = DateTime.Now;
+            VisibleMax = now;
+
+            VisibleMin = SelectedInterval switch
+            {
+                "1s" => now.AddSeconds(-20),
+                "5s" => now.AddMinutes(-1),
+                "10s" => now.AddMinutes(-1),
+                "20s" => now.AddMinutes(-2),
+                "30s" => now.AddMinutes(-3),
+                "1m" => now.AddMinutes(-10),
+                "5m" => now.AddMinutes(-30),
+                "10m" => now.AddHours(-1),
+                "20m" => now.AddHours(-2),
+                "30m" => now.AddHours(-3),
+                "1h" => now.AddDays(-1),
+                "1d" => now.AddDays(-30),
+                "1y" => now.AddYears(-3),
+                _ => now.AddMinutes(-60)
+            };
+
+            GroupedData = allGrouped
+            .Where(g => g.TimeBucket >= VisibleMin && g.TimeBucket <= VisibleMax)
+            .ToList();
+        }
+        else if (SelectedXAxis == "Time")
+        {
+            GroupedData = allGrouped;
+            var latest = _rawTimeData.Max(x => x.CreatedAt);
+            VisibleMax = latest;
+
+            VisibleMin = SelectedInterval switch
+            {
+                "1s" => latest.AddSeconds(-20),
+                "5s" => latest.AddMinutes(-1),
+                "10s" => latest.AddMinutes(-1),
+                "20s" => latest.AddMinutes(-2),
+                "30s" => latest.AddMinutes(-3),
+                "1m" => latest.AddMinutes(-10),
+                "5m" => latest.AddMinutes(-30),
+                "10m" => latest.AddHours(-1),
+                "20m" => latest.AddHours(-2),
+                "30m" => latest.AddHours(-3),
+                "1h" => latest.AddDays(-1),
+                "1d" => latest.AddDays(-30),
+                "1y" => latest.AddYears(-3),
+                _ => latest.AddDays(-10)
+            };
+        }
+        else
+        {
+            GroupedData = new();
+            VisibleMin = null;
+            VisibleMax = null;
+        }
+    }
+
+    private List<TimeGroupedData> GroupBySeconds()
+    {
+        int seconds = SelectedInterval switch
+        {
+            "1s" => 1,
+            "5s" => 5,
+            "10s" => 10,
+            "20s" => 20,
+            "30s" => 30,
+            _ => 5
+        };
+
+        return _rawTimeData
+            .GroupBy(x => new DateTime(
+                x.CreatedAt.Year,
+                x.CreatedAt.Month,
+                x.CreatedAt.Day,
+                x.CreatedAt.Hour,
+                x.CreatedAt.Minute,
+                (x.CreatedAt.Second / seconds) * seconds))
+            .Select(g => new TimeGroupedData
+            {
+                TimeBucket = g.Key,
+                Sales = g.Sum(x => x.Sales),
+                Revenue = g.Sum(x => x.Revenue),
+                Profit = g.Sum(x => x.Profit),
+                ExactTime = g.Max(x => x.CreatedAt),
+                SampleCount = g.Count()
+            })
+            .OrderBy(x => x.TimeBucket)
+            .ToList();
+    }
+
+    private List<TimeGroupedData> GroupByMinutesOrHours()
+    {
+        int minutes = SelectedInterval switch
+        {
+            "1m" => 1,
+            "5m" => 5,
+            "10m" => 10,
+            "20m" => 20,
+            "30m" => 30,
+            "1h" => 60,
+            _ => 10
+        };
+
+        return _rawTimeData
+            .GroupBy(x => new DateTime(
+                x.CreatedAt.Year, x.CreatedAt.Month, x.CreatedAt.Day,
+                x.CreatedAt.Hour, (x.CreatedAt.Minute / minutes) * minutes, 0))
+            .Select(g => new TimeGroupedData
+            {
+                TimeBucket = g.Key,
+                Sales = g.Sum(x => x.Sales),
+                Revenue = g.Sum(x => x.Revenue),
+                Profit = g.Sum(x => x.Profit),
+                ExactTime = g.Max(x => x.CreatedAt),
+                SampleCount = g.Count()
+            })
+            .OrderBy(x => x.TimeBucket)
+            .ToList();
+    }
+
+    private List<TimeGroupedData> GroupByDays()
+    {
+        return _rawTimeData
+            .GroupBy(x => new DateTime(x.CreatedAt.Year, x.CreatedAt.Month, x.CreatedAt.Day))
+            .Select(g => new TimeGroupedData
+            {
+                TimeBucket = g.Key,
+                Sales = g.Sum(x => x.Sales),
+                Revenue = g.Sum(x => x.Revenue),
+                Profit = g.Sum(x => x.Profit),
+                ExactTime = g.Max(x => x.CreatedAt),
+                SampleCount = g.Count()
+            })
+            .OrderBy(x => x.TimeBucket)
+            .ToList();
+    }
+
+    private List<TimeGroupedData> GroupByYears()
+    {
+        return _rawTimeData
+            .GroupBy(x => new DateTime(x.CreatedAt.Year, 1, 1))
+            .Select(g => new TimeGroupedData
+            {
+                TimeBucket = g.Key,
+                Sales = g.Sum(x => x.Sales),
+                Revenue = g.Sum(x => x.Revenue),
+                Profit = g.Sum(x => x.Profit),
+                ExactTime = g.Max(x => x.CreatedAt),
+                SampleCount = g.Count()
+            })
+            .OrderBy(x => x.TimeBucket)
+            .ToList();
+    }
+
+    private ChartCategoryAxisBaseUnit GetBaseUnit() => SelectedInterval switch
+    {
+        "1s" or "5s" or "10s" or "20s" or "30s" => ChartCategoryAxisBaseUnit.Seconds,
+        "1m" or "5m" or "10m" or "20m" or "30m" => ChartCategoryAxisBaseUnit.Minutes,
+        "1h" => ChartCategoryAxisBaseUnit.Hours,
+        "1d" => ChartCategoryAxisBaseUnit.Days,
+        "1y" => ChartCategoryAxisBaseUnit.Years,
+        _ => ChartCategoryAxisBaseUnit.Minutes
+    };
+
+    private int GetBaseUnitStep() => SelectedInterval switch
+    {
+        "1s" => 1,
+        "5s" => 5,
+        "10s" => 10,
+        "20s" => 20,
+        "30s" => 30,
+        "1m" => 1,
+        "5m" => 5,
+        "10m" => 10,
+        "20m" => 20,
+        "30m" => 30,
+        "1h" => 1,
+        "1d" => 1,
+        "1y" => 1,
+        _ => 10
+    };
+
+    private string GetAxisLabelFormat() => SelectedInterval switch
+    {
+        "1s" or "5s" or "10s" or "20s" or "30s" => "HH:mm:ss",
+        "1m" or "5m" or "10m" or "20m" or "30m" => "HH:mm",
+        "1d" => "MM/dd",
+        "1y" => "yyyy",
+        _ => "HH:mm"
+    };
+
+    private async Task OnIntervalChanged(object args)
+    {
+        RegroupData();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnXAxisChanged(object args)
+    {
+        SelectedYAxes = new List<string>();
+        await LoadData();
+        if (SelectedXAxis == "Time")
+        {
+            await LoadInitialTimeData();
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private ChartSeriesType GetChartSeriesType()
+    {
+        return SelectedChartType switch
+        {
+            "Line" => ChartSeriesType.Line,
+            "Bar" => ChartSeriesType.Bar,
+            "Area" => ChartSeriesType.Area,
+            _ => ChartSeriesType.Column
+        };
+    }
+
+    private ChartSeriesType GetTrendlineSeriesType()
+    {
+        return ChartSeriesType.LinearTrendline;
+    }
+
+    public void Dispose()
+    {
+        _timer?.Stop();
+        _timer?.Dispose();
+    }
+
+}

@@ -9,10 +9,6 @@
 
 <h1>Product Catalog</h1>
 
-<div class="mb-3">
-    <TelerikButton Icon="@SvgIcon.Plus" OnClick="@(() => IsWindowVisible = true)">Add New Product</TelerikButton>
-</div>
-
 <div class="filter-section">
     <TelerikDropDownList Data="@Categories"
                          TextField="Text"
@@ -48,7 +44,8 @@
              Pageable="true"
              Sortable="true"
              PageSize="5"
-             Height="400px">
+             Height="450px"
+             OnRowDoubleClick="@OnRowClick">
     <GridColumns>
         <GridColumn Field="@nameof(Product.Name)" Title="Product Name" Width="200px" />
         <GridColumn Field="@nameof(Product.Category)" Title="Category" Width="150px" />
@@ -89,34 +86,23 @@
             </Template>
         </GridColumn>
     </GridColumns>
+
 </TelerikGrid>
 
-<TelerikWindow @bind-Visible="@IsWindowVisible" Modal="true" Width="400px">
-    <WindowTitle>Add New Product</WindowTitle>
+<TelerikWindow Visible="@IsWindowVisible" Width="600px" Height="400px">
+    <WindowTitle>Product Details</WindowTitle>
     <WindowContent>
-        <div class="p-3">
-            <div class="mb-3">
-                <label>Name:</label>
-                <TelerikTextBox @bind-Value="NewProduct.Name" Width="100%" />
-            </div>
-            <div class="mb-3">
-                <label>Category:</label>
-                <TelerikDropDownList Data="@Categories" TextField="Text" ValueField="Value" @bind-Value="NewProduct.Category" Width="100%" />
-            </div>
-            <div class="mb-3">
-                <label>Price:</label>
-                <TelerikNumericTextBox @bind-Value="NewProduct.Price" Width="100%" />
-            </div>
-            <div class="mb-3">
-                <label>Stock:</label>
-                <TelerikNumericTextBox @bind-Value="NewProduct.Stock" Width="100%" />
-            </div>
-            <div class="mt-4">
-                <TelerikButton ThemeColor="Primary" OnClick="@SaveProduct">Save Product</TelerikButton>
-                <TelerikButton OnClick="@(() => IsWindowVisible = false)">Cancel</TelerikButton>
-            </div>
+        <div class="product-details">
+            <h3>@SelectedProduct.Name</h3>
+            <p><strong>Category:</strong> @SelectedProduct.Category</p>
+            <p><strong>Price:</strong> @SelectedProduct.Price.ToString("C")</p>
+            <p><strong>Stock:</strong> @SelectedProduct.Stock</p>
+            <img src="@ProductImages[SelectedProduct.Id]" style="height:200px; width:auto; border-radius:4px;" />
         </div>
     </WindowContent>
+    <WindowActions>
+        <WindowAction Name="Close" />
+    </WindowActions>
 </TelerikWindow>
 
 @code {
@@ -128,13 +114,13 @@
     private decimal? MinPrice { get; set; }
     private decimal? MaxPrice { get; set; }
 
-    private Dictionary<int, string> ProductImages = new(); // Store product images by ID
+    private Dictionary<int, string> ProductImages = new();
+    private bool IsWindowVisible { get; set; } = false;
+    private Product SelectedProduct { get; set; } = new Product();  // This will hold the selected product's data
 
     protected override async Task OnInitializedAsync()
     {
-        // Fetch products using ProductService
         var data = await ProductService.GetProductsAsync();
-
         if (data != null)
         {
             AllProducts = data;
@@ -147,18 +133,15 @@
 
             FilteredProducts = new List<Product>(AllProducts);
 
-            // Fill in ProductImages with dummy image URLs
             foreach (var product in AllProducts)
             {
-                ProductImages[product.Id] = product.Thumbnail ?? "https://via.placeholder.com/150"; // Use the real image from the API
+                ProductImages[product.Id] = product.Thumbnail ?? "https://via.placeholder.com/150";
             }
         }
     }
 
-
     private void ApplyFilters()
     {
-        // Filtering logic
         FilteredProducts = AllProducts
             .Where(p =>
                 (string.IsNullOrEmpty(SelectedCategory) || p.Category == SelectedCategory) &&
@@ -166,19 +149,27 @@
                 (!MaxPrice.HasValue || p.Price <= MaxPrice.Value))
             .ToList();
 
-        StateHasChanged(); // Refresh UI
+        StateHasChanged();
     }
 
     private void ClearFilters()
     {
-        // Reset filters
         SelectedCategory = null;
         MinPrice = null;
         MaxPrice = null;
-
         FilteredProducts = new List<Product>(AllProducts);
+        StateHasChanged();
+    }
 
-        StateHasChanged(); // Refresh UI
+    private void OnRowClick(GridRowClickEventArgs args)
+    {
+        SelectedProduct = args.Item as Product;
+        IsWindowVisible = true;
+    }
+
+    private void CloseWindow()
+    {
+        IsWindowVisible = false;
     }
 
     public class CategoryOption
@@ -186,25 +177,8 @@
         public string Text { get; set; } = string.Empty;
         public string Value { get; set; } = string.Empty;
     }
-
-    private bool IsWindowVisible { get; set; }
-    private Product NewProduct { get; set; } = new();
-
-    private void SaveProduct()
-    {
-        if (string.IsNullOrWhiteSpace(NewProduct.Name)) return;
-
-        NewProduct.Id = AllProducts.Max(p => p.Id) + 1; // Auto-increment ID
-
-        AllProducts.Add(NewProduct);
-
-        // Reset and close the window
-        NewProduct = new Product();
-        IsWindowVisible = false;
-
-        ApplyFilters(); // Re-apply filters to update the list
-    }
 }
+
 
 <style>
     .filter-section {
@@ -213,4 +187,12 @@
         align-items: center;
         margin-bottom: 20px;
     }
+
+    .product-details {
+        text-align: center;
+    }
+
+        .product-details img {
+            margin-top: 10px;
+        }
 </style>

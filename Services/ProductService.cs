@@ -15,7 +15,7 @@ namespace ProductCatalog.Services
         // Fetch simplified products (id, name, category, price, stock)
         public async Task<List<Product>> GetProductsAsync()
         {
-            var response = await _http.GetFromJsonAsync<DummyJsonResponse>("https://dummyjson.com/products")
+            var response = await _http.GetFromJsonAsync<DummyJsonResponse>("https://dummyjson.com/products?limit=0")
                            ?? new DummyJsonResponse();
 
             return response.products.Select(p => new Product
@@ -34,7 +34,7 @@ namespace ProductCatalog.Services
         {
             try
             {
-                return await _http.GetFromJsonAsync<DummyJsonResponse>("https://dummyjson.com/products")
+                return await _http.GetFromJsonAsync<DummyJsonResponse>("https://dummyjson.com/products?limit=0")
                        ?? new DummyJsonResponse();
             }
             catch
