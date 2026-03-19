@@ -38,26 +38,17 @@
                     <TabStripTab Title="Data">
                         <div class="config-section">
                             <div class="section-title">
-                                <TelerikSvgIcon Icon="@SvgIcon.Table" /> Data Source
+                                <TelerikSvgIcon Icon="@SvgIcon.Table" /> Data Source (Tags)
                             </div>
 
                             <div class="config-row">
-                                <label>X Axis Field</label>
-                                <TelerikDropDownList Data="@XAxisOptions"
-                                                     TextField="Text"
-                                                     ValueField="Value"
-                                                     @bind-Value="SelectedXAxis"
-                                                     Width="100%" />
-                            </div>
-
-                            <div class="config-row">
-                                <label>Y Axis Fields</label>
-                                <TelerikMultiSelect Data="@YAxisOptions"
+                                <label>Tags</label>
+                                <TelerikMultiSelect Data="@TagOptions"
                                                     TextField="Text"
                                                     ValueField="Value"
-                                                    Value="@SelectedYAxes"
-                                                    ValueChanged="@((List<string> vals) => OnSelectedYAxesChanged(vals))"
-                                                    Placeholder="Select metrics..."
+                                                    Value="@SelectedTags"
+                                                    ValueChanged="@((List<string> vals) => OnSelectedTagsChanged(vals))"
+                                                    Placeholder="Select tags..."
                                                     Width="100%"
                                                     AutoClose="false" />
                             </div>
@@ -93,26 +84,27 @@
                     <TabStripTab Title="Series">
                         <div class="config-section">
                             <div class="section-title">
-                                <TelerikSvgIcon Icon="@SvgIcon.Graph" /> Series Configuration
+                                <TelerikSvgIcon Icon="@SvgIcon.Graph" /> Series Configuration (per Tag)
                             </div>
 
-                            @if (!SelectedYAxes.Any())
+                            @if (!SelectedTags.Any())
                             {
                                 <div class="empty-state">
-                                    <p>Select Y-axis fields in the Data tab first.</p>
+                                    <p>Select tags in the Data tab first.</p>
                                 </div>
                             }
 
-                            @foreach (var y in SelectedYAxes)
+                            @foreach (var tag in SelectedTags)
                             {
-                                var config = GetSeriesConfig(y);
-                                var index = SelectedYAxes.IndexOf(y);
+                                var config = GetSeriesConfig(tag);
+                                var index = SelectedTags.IndexOf(tag);
                                 <div class="series-card @(config.IsHidden ? "hidden-series" : "")">
                                     <div class="series-card-header"
-                                         @onclick="@(() => ToggleSeriesExpanded(y))">
+                                         @onclick="@(() => ToggleSeriesExpanded(tag))">
                                         <div class="series-color-dot"
                                              style="background-color: @config.Color;"></div>
-                                        <span class="series-name">@y</span>
+                                        <span class="series-name">@(!string.IsNullOrEmpty(config.Name) ? config.Name : tag)</span>
+                                        <small class="text-muted" style="margin-left:6px;">@tag</small>
                                         <span class="series-type-badge">@config.ChartType</span>
 
                                         <div class="series-actions">
@@ -120,14 +112,14 @@
                                                 <TelerikButton FillMode="flat"
                                                                Size="sm"
                                                                Icon="@(config.IsHidden ? SvgIcon.EyeSlash : SvgIcon.Eye)"
-                                                               OnClick="@(() => ToggleSeriesVisibility(y))" />
+                                                               OnClick="@(() => ToggleSeriesVisibility(tag))" />
                                             </span>
 
                                             <span @onclick:stopPropagation="true">
                                                 <TelerikButton FillMode="flat"
                                                                Size="sm"
                                                                Icon="@SvgIcon.ArrowUp"
-                                                               OnClick="@(() => MoveSeriesUp(y))"
+                                                               OnClick="@(() => MoveSeriesUp(tag))"
                                                                Enabled="@(index > 0)" />
                                             </span>
 
@@ -135,8 +127,8 @@
                                                 <TelerikButton FillMode="flat"
                                                                Size="sm"
                                                                Icon="@SvgIcon.ArrowDown"
-                                                               OnClick="@(() => MoveSeriesDown(y))"
-                                                               Enabled="@(index < SelectedYAxes.Count - 1)" />
+                                                               OnClick="@(() => MoveSeriesDown(tag))"
+                                                               Enabled="@(index < SelectedTags.Count - 1)" />
                                             </span>
 
                                             <TelerikSvgIcon Icon="@(config.IsExpanded? SvgIcon.ChevronUp: SvgIcon.ChevronDown)" />
@@ -146,6 +138,16 @@
                                     @if (config.IsExpanded)
                                     {
                                         <div class="series-card-body">
+
+                                            <!-- Display Title  -->
+                                            <div class="config-row">
+                                                <label>Title</label>
+                                                <TelerikTextBox Value="@GetRenameBuffer(tag)"
+                                                                ValueChanged="@((string v) => { SetRenameBuffer(tag, v); var c = GetSeriesConfig(tag); c.Name = v ?? tag; _chartKey++; StateHasChanged(); })"
+                                                                Placeholder="@tag"
+                                                                Width="100%" />
+                                            </div>
+
                                             <!-- Chart Type as dropdown -->
                                             <div class="config-row">
                                                 <label>Chart Type</label>
@@ -153,7 +155,7 @@
                                                                      TextField="Label"
                                                                      ValueField="Value"
                                                                      Value="@config.ChartType"
-                                                                     ValueChanged="@((string v) => SetSeriesChartType(y, v))"
+                                                                     ValueChanged="@((string v) => SetSeriesChartType(tag, v))"
                                                                      Width="100%" />
                                             </div>
 
@@ -163,9 +165,24 @@
                                                 <div class="color-picker-row">
                                                     <input type="color"
                                                            value="@config.Color"
-                                                           @onchange="@((ChangeEventArgs e) => SetSeriesColor(y, e.Value?.ToString()))"
+                                                           @onchange="@((ChangeEventArgs e) => SetSeriesColor(tag, e.Value?.ToString()))"
                                                            class="custom-color-input"
-                                                           aria-label="@($"Pick color for {y}")" />
+                                                           aria-label="@($"Pick color for {tag}")" />
+                                                </div>
+                                            </div>
+
+                                            <!-- Axis Assignment -->
+                                            <div class="config-row">
+                                                <label>Y Axis</label>
+                                                <div style="display:flex; gap:8px; align-items:center;">
+                                                    <TelerikDropDownList Data="@GetYAxisOptions()"
+                                                                         TextField="Text"
+                                                                         ValueField="Value"
+                                                                         Value="@config.AxisName"
+                                                                         ValueChanged="@((string v) => SetSeriesAxis(tag, v))"
+                                                                         Width="70%" />
+                                                    <TelerikButton Size="sm" Icon="@SvgIcon.Plus"
+                                                                   OnClick="@(() => AddYAxisForSeries(tag))" />
                                                 </div>
                                             </div>
 
@@ -218,73 +235,6 @@
                                                                              Width="100%" />
                                                     </div>
                                                 }
-                                            }
-
-                                            <!-- Area-specific: opacity -->
-                                            @if (config.ChartType == "Area")
-                                            {
-                                                <div class="config-row">
-                                                    <label>Fill Opacity</label>
-                                                    <TelerikDropDownList Data="@AreaOpacityOptions"
-                                                                         @bind-Value="config.AreaOpacity"
-                                                                         Width="100%" />
-                                                </div>
-
-                                                <div class="config-row inline">
-                                                    <label>Smooth Curve</label>
-                                                    <TelerikSwitch @bind-Value="config.IsSmooth" />
-                                                </div>
-
-                                                <div class="config-row inline">
-                                                    <label>Show Markers</label>
-                                                    <TelerikSwitch @bind-Value="config.ShowMarkers" />
-                                                </div>
-
-                                                @if (config.ShowMarkers)
-                                                {
-                                                    <div class="config-row">
-                                                        <label>Marker Type</label>
-                                                        <TelerikDropDownList Data="@MarkerTypes"
-                                                                             TextField="Text"
-                                                                             ValueField="Value"
-                                                                             Value="@config.MarkerType"
-                                                                             ValueChanged="@((string v) => config.MarkerType = v)"
-                                                                             Width="100%" />
-                                                    </div>
-
-                                                    <div class="config-row">
-                                                        <label>Marker Size</label>
-                                                        <TelerikDropDownList Data="@MarkerSizeOptions"
-                                                                             @bind-Value="config.MarkerSize"
-                                                                             Width="100%" />
-                                                    </div>
-                                                }
-                                            }
-
-                                            <!-- Bar/Column specific -->
-                                            @if (config.ChartType is "Bar" or "Column")
-                                            {
-                                                <div class="config-row">
-                                                    <label>Gap Between Bars</label>
-                                                    <TelerikDropDownList Data="@BarGapOptions"
-                                                                         @bind-Value="config.BarGap"
-                                                                         Width="100%" />
-                                                </div>
-
-                                                <div class="config-row">
-                                                    <label>Border Width</label>
-                                                    <TelerikDropDownList Data="@BorderWidthOptions"
-                                                                         @bind-Value="config.BorderWidth"
-                                                                         Width="100%" />
-                                                </div>
-
-                                                <div class="config-row">
-                                                    <label>Border Color</label>
-                                                    <input type="color"
-                                                           value="@config.BorderColor"
-                                                           @onchange="@((ChangeEventArgs e) => config.BorderColor = e.Value?.ToString() ?? "#000")"
-                                                           class="custom-color-input" />
-                                                </div>
                                             }
 
                                             <!-- Data Labels -->
@@ -345,7 +295,7 @@
                                 </div>
                             }
 
-                            @if (SelectedYAxes.Any())
+                            @if (SelectedTags.Any())
                             {
                                 <div class="config-row" style="margin-top: 12px;">
                                     <div class="section-title">
@@ -378,7 +328,7 @@
                         <div class="config-section">
 
                             <div class="section-title">
-                                <TelerikSvgIcon Icon="@SvgIcon.ArrowsLeftRight" /> X Axis (Category)
+                                <TelerikSvgIcon Icon="@SvgIcon.ArrowsLeftRight" /> X Axis (Time)
                             </div>
 
                             <div class="config-row inline">
@@ -389,7 +339,7 @@
                             <div class="config-row">
                                 <label>Title</label>
                                 <TelerikTextBox @bind-Value="XAxisConfig.Title"
-                                                Placeholder="Auto-generated"
+                                                Placeholder="Time"
                                                 Width="100%" />
                             </div>
 
@@ -579,16 +529,70 @@
                                 </div>
                             }
 
+                            <div class="section-title">
+                                <TelerikSvgIcon Icon="@SvgIcon.ArrowsTopBottom" /> Y Axes
+                                <div style="margin-left:auto;">
+                                    <TelerikButton Size="sm" OnClick="@AddYAxis" Icon="@SvgIcon.Plus">
+                                        Add Axis
+                                    </TelerikButton>
+                                </div>
+                            </div>
+
+                            @if (!YAxisConfigs.Any())
+                            {
+                                <div class="empty-state">
+                                    <p>No Y axes defined. Add one to map tags to axes.</p>
+                                </div>
+                            }
+
                             @foreach (var axisId in GetDistinctYAxes())
                             {
                                 var yConfig = GetYAxisConfig(axisId);
+
+                                var mapped = SeriesConfigs
+                                .Where(kv => kv.Value.AxisName == axisId)
+                                .Select(kv => kv.Key)
+                                .ToList();
+
                                 <div class="axis-config-block">
                                     <div class="section-title clickable"
                                          @onclick="@(() => yConfig.IsExpanded = !yConfig.IsExpanded)">
                                         <TelerikSvgIcon Icon="@SvgIcon.ArrowsTopBottom" />
                                         Y Axis: @axisId
-                                        <TelerikSvgIcon Icon="@(yConfig.IsExpanded? SvgIcon.ChevronUp: SvgIcon.ChevronDown)" />
+
+                                        <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
+                                            <span @onclick:stopPropagation="true">
+                                                <TelerikButton FillMode="flat"
+                                                               Size="sm"
+                                                               Icon="@SvgIcon.ArrowUp"
+                                                               OnClick="@(() => MoveYAxisUp(axisId))"
+                                                               Enabled="@(GetDistinctYAxes().IndexOf(axisId) > 0)" />
+                                            </span>
+
+                                            <span @onclick:stopPropagation="true">
+                                                <TelerikButton FillMode="flat"
+                                                               Size="sm"
+                                                               Icon="@SvgIcon.ArrowDown"
+                                                               OnClick="@(() => MoveYAxisDown(axisId))"
+                                                               Enabled="@(GetDistinctYAxes().IndexOf(axisId) < GetDistinctYAxes().Count - 1)" />
+                                            </span>
+
+                                            <TelerikSvgIcon Icon="@(yConfig.IsExpanded? SvgIcon.ChevronUp: SvgIcon.ChevronDown)" />
+                                        </div>
                                     </div>
+
+                                    @* Show mapped series for this axis *@
+                                    @if (mapped.Any())
+                                    {
+                                        <div class="mapped-series-list" style="padding:8px 10px;">
+                                            <strong>Mapped series:</strong>
+                                            @foreach (var t in mapped)
+                                            {
+                                                var display = !string.IsNullOrEmpty(SeriesConfigs[t].Name) ? SeriesConfigs[t].Name : t;
+                                                <span class="mapped-series-item">@display</span>
+                                            }
+                                        </div>
+                                    }
 
                                     @if (yConfig.IsExpanded)
                                     {
@@ -618,7 +622,6 @@
                                             <label>Min Value (empty=auto)</label>
                                             <TelerikNumericTextBox @bind-Value="yConfig.Min"
                                                                    Width="100%"
-                                                                   Enabled="!SyncYAxisMinMax"
                                                                    Format="N2" />
                                         </div>
 
@@ -626,7 +629,6 @@
                                             <label>Max Value (empty=auto)</label>
                                             <TelerikNumericTextBox @bind-Value="yConfig.Max"
                                                                    Width="100%"
-                                                                   Enabled="!SyncYAxisMinMax"
                                                                    Format="N2" />
                                         </div>
 
@@ -670,6 +672,14 @@
                                                                              ValueChanged="@((string v) => yConfig.MajorGridDash = v)"
                                                                              Width="100%" />
                                                     </div>
+
+                                                    <div class="config-row">
+                                                        <label>Grid Color</label>
+                                                        <input type="color"
+                                                               value="@yConfig.MajorGridColor"
+                                                               @onchange="@((ChangeEventArgs e) => yConfig.MajorGridColor = e.Value?.ToString() ?? "#ddd")"
+                                                               class="custom-color-input" />
+                                                    </div>
                                                 }
                                             }
                                         </div>
@@ -690,6 +700,15 @@
                                                                            Width="100%" Format="N0" />
                                                 </div>
                                             }
+                                        </div>
+
+
+                                        <div style="margin-top:8px;">
+                                            <TelerikButton ThemeColor="ThemeColor.Error" Size="sm"
+                                                           OnClick="@( () => RemoveYAxis(axisId))"
+                                                           Icon="@SvgIcon.Trash">
+                                                Remove Axis
+                                            </TelerikButton>
                                         </div>
                                     }
                                 </div>
@@ -860,11 +879,18 @@
                             </div>
 
                             <div class="config-row">
+                                <label>Title Alignment</label>
+                                <TelerikDropDownList Data="@TitleAlignOptions"
+                                                     @bind-Value="TitleAlignment"
+                                                     Width="100%" />
+                            </div>
+
+                            <div class="config-row">
                                 <label>Chart Height</label>
                                 <TelerikDropDownList Data="@ChartHeightOptions"
                                                      @bind-Value="ChartHeight"
                                                      Width="100%" />
-                                <small class="text-muted">@ChartHeight px</small>
+
                             </div>
 
                             <div class="config-row">
@@ -903,7 +929,7 @@
 
                             <hr />
 
-                            <!-- Layout controls (moved from removed Layout tab) -->
+                            <!-- Layout controls -->
                             <div class="section-title">
                                 <TelerikSvgIcon Icon="@SvgIcon.Layout" /> Layout & Spacing
                             </div>
@@ -922,13 +948,6 @@
                             <div class="config-row">
                                 <label>Plot Area Padding</label>
                                 <TelerikNumericTextBox @bind-Value="PlotAreaPadding" Min="0" Max="100" Width="100%" />
-                            </div>
-
-                            <div class="config-row">
-                                <label>Title Alignment</label>
-                                <TelerikDropDownList Data="@TitleAlignOptions"
-                                                     @bind-Value="TitleAlignment"
-                                                     Width="100%" />
                             </div>
 
                             <hr />
@@ -1068,7 +1087,7 @@
                         <ChartPlotAreaBorder Color="#e6e6e6" Width="1" />
                     </ChartPlotArea>
 
-                    <ChartTitle Text="@GetDynamicChartTitle()" Align="@GetChartTitleAlign()" />
+                    <ChartTitle Text="@CustomChartTitle" Align="@GetChartTitleAlign()" />
 
                     <ChartLegend Visible="@ShowLegend"
                                  Position="@GetLegendPosition()">
@@ -1093,7 +1112,7 @@
                     </ChartLegend>
 
                     <ChartZoomable Enabled="true">
-                        <ChartZoomableMousewheel Enabled="true" />
+                        <ChartZoomableMousewheel Enabled="false" />
                     </ChartZoomable>
 
                     <ChartPannable Enabled="true" />
@@ -1106,9 +1125,9 @@
                                 string categoryText = "";
                                 var firstPoint = context.Points.FirstOrDefault();
 
-                                if (firstPoint?.DataItem is AggregatedReading dataItem)
+                                if (firstPoint?.DataItem is AggregatedReading firstDataItem)
                                 {
-                                    categoryText = dataItem.Time.ToString(GetTooltipTimeFormat());
+                                    categoryText = firstDataItem.Time.ToString(GetTooltipTimeFormat());
                                 }
                                 else
                                 {
@@ -1122,18 +1141,50 @@
 
                                 @foreach (var point in context.Points)
                                 {
-                                    var item = point.DataItem;
-                                    var prop = item?.GetType().GetProperty(point.SeriesName);
-                                    var value = prop?.GetValue(item);
+                                    var seriesName = point.SeriesName ?? "";
 
-                                    if (value != null)
+                                    object rawValue = null;
+
+                                    var pointType = point.GetType();
+                                    var pointValueProp = pointType.GetProperty("Value");
+                                    if (pointValueProp != null)
                                     {
-                                        double number = 0;
-                                        if (double.TryParse(value.ToString(), out number))
+                                        rawValue = pointValueProp.GetValue(point);
+                                    }
+                                    else if (point.DataItem != null)
+                                    {
+                                        var pointData = point.DataItem;
+                                        var prop = pointData.GetType().GetProperty("Value")
+                                        ?? pointData.GetType().GetProperty("value");
+                                        if (prop != null)
+                                        {
+                                            rawValue = prop.GetValue(pointData);
+                                        }
+                                        else
+                                        {
+                                            // If DataItem is a primitive numeric type
+                                            if (pointData is double || pointData is float || pointData is decimal
+                                            || pointData is int || pointData is long)
+                                            {
+                                                rawValue = pointData;
+                                            }
+                                        }
+                                    }
+
+                                    if (rawValue != null)
+                                    {
+                                        if (double.TryParse(rawValue.ToString(), out var number))
                                         {
                                             <div>
-                                                @point.SeriesName:
+                                                @seriesName:
                                                 <strong>@number.ToString("N2")</strong>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div>
+                                                @seriesName:
+                                                <strong>@rawValue</strong>
                                             </div>
                                         }
                                     }
@@ -1151,7 +1202,7 @@
                                 }
 
                                 var tipProp = context.DataItem?.GetType()
-                                .GetProperty(context.SeriesName);
+                                .GetProperty("Value");
                                 var tipValue = tipProp?.GetValue(context.DataItem);
                                 double tipNumber = 0;
                                 bool hasTipNumber = tipValue != null
@@ -1223,12 +1274,10 @@
                                             AxisCrossingValue="@(new object[] { double.MinValue })"
                                             Visible="@yConfig.Visible"
                                             Color="@yConfig.AxisColor"
-                                            Min="@(SyncYAxisMinMax
-                                                    ? GlobalYAxisMin
-                                                : (axisId == "Temperature") ? null : 0.00)"
-                                        Max="@(SyncYAxisMinMax ? GlobalYAxisMax : yConfig.Max)"
-                                        MajorUnit="@(yConfig.ShowMajorTicks ? yConfig.MajorUnit : (double?)null)"
-                                        MinorUnit="@(yConfig.ShowMinorTicks ? yConfig.MinorUnit : (double?)null)">
+                                            Min="@(SyncYAxisMinMax ? GlobalYAxisMin : (yConfig.Min ?? (AxisHasNegativeValues(axisId) ? (double?)null : 0.0)))"
+                                            Max="@(SyncYAxisMinMax ? GlobalYAxisMax : yConfig.Max)"
+                                            MajorUnit="@(yConfig.ShowMajorTicks ? yConfig.MajorUnit : (double?)null)"
+                                            MinorUnit="@(yConfig.ShowMinorTicks ? yConfig.MinorUnit : (double?)null)">
 
                                 <ChartValueAxisTitle Text="@(string.IsNullOrEmpty(yConfig.Title) ? axisId : yConfig.Title)" />
 
@@ -1241,19 +1290,20 @@
 
                                 <ChartValueAxisMajorGridLines Visible="@(yConfig.ShowMajorTicks && yConfig.ShowMajorGridLines)"
                                                               Width="1"
+                                                              Color="@yConfig.MajorGridColor"
                                                               DashType="@GetDashType(yConfig.MajorGridDash)" />
 
                                 <ChartValueAxisMinorGridLines Visible="@(yConfig.ShowMinorTicks)"
                                                               Width="0.5"
                                                               DashType="DashType.Dot" />
 
-                            @if (PlotBands.Any())
+                                @if (PlotBands.Any(p => p.AxisName == axisId))
                                 {
                                     <ChartValueAxisPlotBands>
-                                        @foreach (var band in PlotBands)
+                                        @foreach (var band in PlotBands.Where(p => p.AxisName == axisId))
                                         {
-                                            <ChartValueAxisPlotBand From="@((double)band.From)"
-                                                                    To="@((double)band.To)"
+                                            <ChartValueAxisPlotBand From="@band.From"
+                                                                    To="@band.To"
                                                                     Color="@band.Color"
                                                                     Opacity="@((float)band.Opacity)" />
                                         }
@@ -1265,17 +1315,24 @@
 
                     <!-- Series -->
                     <ChartSeriesItems>
-                        @foreach (var y in SelectedYAxes.Where(y => GetYAxisConfig(y).Visible))
+                        @foreach (var tag in SelectedTags)
                         {
-                            var cfg = GetSeriesConfig(y);
-                            var isHidden = cfg.IsHidden;
-                            var axisName = y;
+                            var cfg = GetSeriesConfig(tag);
+                            var axisName = cfg.AxisName ?? GetDistinctYAxes().FirstOrDefault() ?? "Axis 1";
 
-                            <ChartSeries Data="@GetAggregatedVisibleData()"
-                                         Field="@y"
+                            if (!GetYAxisConfig(axisName).Visible)
+                            {
+                                continue;
+                            }
+
+                            var isHidden = cfg.IsHidden || HiddenSeries.Contains(tag);
+                            var displayName = !string.IsNullOrEmpty(cfg.Name) ? cfg.Name : tag;
+
+                            <ChartSeries Data="@GetSeriesData(tag)"
+                                         Field="Value"
                                          CategoryField="Time"
                                          Type="@GetSeriesType(cfg.ChartType)"
-                                         Name="@y"
+                                         Name="@displayName"
                                          Axis="@axisName"
                                          Color="@cfg.Color"
                                          Visible="@(!isHidden)"
@@ -1308,13 +1365,14 @@
                             @* Trendline per series *@
                             @if (cfg.ShowTrendline)
                             {
-                                var trendName = $"{y} Trend";
-                                var isTrendHidden = HiddenSeries.Contains(trendName);
+                                var trendDisplayName = $"{displayName} Trend";
+                                var trendKey = $"{tag}_trend";
+                                var isTrendHidden = HiddenSeries.Contains(trendKey);
 
-                                <ChartSeries Data="@GetAggregatedVisibleData()"
-                                             For="@y"
+                                <ChartSeries Data="@GetSeriesData(tag)"
+                                             For="@tag"
                                              Type="@GetTrendlineSeriesType(cfg.TrendlineType)"
-                                             Name="@trendName"
+                                             Name="@trendDisplayName"
                                              Color="@cfg.TrendlineColor"
                                              Visible="@(!isTrendHidden)">
                                 </ChartSeries>
@@ -1347,7 +1405,6 @@
     private bool IsConfigCollapsed = false;
     private bool EnableTransitions = false;
 
-    private string SelectedXAxis = "Time";
     private int CategoryLabelRotation = -45;
     private string SelectedRange = "30s";
     private string SelectedStackType = "Normal";
@@ -1375,7 +1432,7 @@
     private string LegendMarkerHighlightBorderColor = "#999999";
 
     // Layout-specific properties
-    private int ChartMarginTop = 8;
+    private int ChartMarginTop = 25;
     private int ChartMarginRight = 8;
     private int ChartMarginBottom = 8;
     private int ChartMarginLeft = 8;
@@ -1407,23 +1464,24 @@
     private List<int> TickSizeOptions = Enumerable.Range(1, 20).ToList();
     private List<double> GridWidthOptions = new() { 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0 };
 
-    private List<string> SelectedYAxes = new();
+    // Tag-based selection
+    private List<string> SelectedTags = new();
+    private List<FieldOption> TagOptions = new();
+
+    private Dictionary<string, string> SeriesRenameBuffers = new();
+
+    // Series & Y axis configuration
     private Dictionary<string, SeriesConfiguration> SeriesConfigs = new();
     private Dictionary<string, YAxisConfiguration> YAxisConfigs = new();
+    // Order for Y axes to allow up/down reordering (preserve order in UI & chart)
+    private List<string> YAxisOrder = new();
     private HashSet<string> HiddenSeries = new();
     private List<PlotBandConfig> PlotBands = new();
     private AxisConfiguration XAxisConfig = new();
 
     private long _chartKey = 0;
 
-    private bool SyncYAxisMinMax = false;
-    private double? GlobalYAxisMin = null;
-    private double? GlobalYAxisMax = null;
-
-    // ═══════════════════════════════════════════════════════
-    //  SLIDING WINDOW STATE
-    // ═══════════════════════════════════════════════════════
-
+    // Sliding window state
     private List<SensorReading> ChartData = new();
     private DateTime _lastLoadedTime = DateTime.MinValue;
     private DateTime? VisibleMin;
@@ -1449,9 +1507,13 @@
     private int MajorTickStep = 1;
     private int MinorTickStep = 1;
 
+    private bool SyncYAxisMinMax = false;
+    private double? GlobalYAxisMin = null;
+    private double? GlobalYAxisMax = null;
+
 
     // ═══════════════════════════════════════════════════════
-    //  CONFIGURATION MODELS
+    //  CONFIGURATION MODELS (updated for tag-value historian)
     // ═══════════════════════════════════════════════════════
 
     public class SeriesConfiguration
@@ -1472,12 +1534,14 @@
         public bool ShowDataLabels { get; set; } = false;
         public string DataLabelFormat { get; set; } = "N0";
         public string DataLabelPosition { get; set; } = "Above";
-        public string AxisAssignment { get; set; } = "Left";
+        // AxisName references a named Y axis (e.g. "Axis 1", "Temperature axis", ...)
+        public string AxisName { get; set; } = "";
         public bool ShowTrendline { get; set; } = false;
         public string TrendlineType { get; set; } = "Linear";
         public string TrendlineColor { get; set; } = "#999999";
         public bool IsHidden { get; set; } = false;
         public bool IsExpanded { get; set; } = false;
+        public bool Visible => !IsHidden;
     }
 
     public class YAxisConfiguration
@@ -1486,13 +1550,14 @@
         public bool Visible { get; set; } = true;
         public string Title { get; set; } = "";
         public string Position { get; set; } = "Left";
-        public double? Min { get; set; } = 0;
+        public double? Min { get; set; } = null;
         public double? Max { get; set; } = null;
         public string AxisColor { get; set; } = "#000000";
         public bool ShowMajorTicks { get; set; } = true;
         public double? MajorUnit { get; set; } = null;
         public bool ShowMajorGridLines { get; set; } = true;
         public string MajorGridDash { get; set; } = "Solid";
+        public string MajorGridColor { get; set; } = "#dddddd";
         public bool ShowMinorTicks { get; set; } = false;
         public double? MinorUnit { get; set; } = null;
         public bool IsExpanded { get; set; } = true;
@@ -1519,11 +1584,11 @@
 
     public class PlotBandConfig
     {
+        public string AxisName { get; set; } = "";
         public double From { get; set; } = 0;
         public double To { get; set; } = 100;
         public string Color { get; set; } = "#ff000033";
         public double Opacity { get; set; } = 0.2;
-        public string Label { get; set; } = "";
     }
 
     public class ChartTypeOption
@@ -1532,21 +1597,16 @@
         public string Label { get; set; }
     }
 
+    // Aggregated reading used by chart series (Time + Value)
     public class AggregatedReading
     {
         public DateTime Time { get; set; }
-        public double Temperature { get; set; }
-        public double Pressure { get; set; }
-        public double Humidity { get; set; }
-        public double Voltage { get; set; }
+        public double Value { get; set; }
     }
 
     // ═══════════════════════════════════════════════════════
     //  OPTIONS / DROPDOWN DATA
     // ═══════════════════════════════════════════════════════
-
-    private List<FieldOption> XAxisOptions = new();
-    private List<FieldOption> YAxisOptions = new();
 
     private List<FieldOption> RangePresets = new()
     {
@@ -1613,12 +1673,6 @@
         new FieldOption { Text = "Long Dash",  Value = "LongDash" },
     };
 
-    private List<FieldOption> YAxisAssignments = new()
-    {
-        new FieldOption { Text = "Left (Primary)",   Value = "Left" },
-        new FieldOption { Text = "Right (Secondary)", Value = "Right" },
-    };
-
     private List<FieldOption> RenderModes = new()
     {
         new FieldOption { Text = "Canvas (Fast)",  Value = "Canvas" },
@@ -1649,9 +1703,35 @@
 
     protected override async Task OnInitializedAsync()
     {
-        PopulateFieldOptionsFromModel();
+        await LoadDistinctTagsFromDb();
+        // create a default axis so user can map tags immediately
+        if (!YAxisConfigs.Any())
+        {
+            YAxisConfigs["Axis 1"] = new YAxisConfiguration { Name = "Axis 1", Title = "Axis 1" };
+            if (!YAxisOrder.Contains("Axis 1")) YAxisOrder.Add("Axis 1");
+        }
+
         await LoadDataForWindow(DateTime.Now);
         StartTimer();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  Helper methods for rename buffer
+    // ═══════════════════════════════════════════════════════
+
+    private string GetRenameBuffer(string tag)
+    {
+        if (!SeriesRenameBuffers.TryGetValue(tag, out var val))
+        {
+            val = SeriesConfigs.TryGetValue(tag, out var cfg) ? (cfg.Name ?? tag) : tag;
+            SeriesRenameBuffers[tag] = val;
+        }
+        return SeriesRenameBuffers[tag];
+    }
+
+    private void SetRenameBuffer(string tag, string value)
+    {
+        SeriesRenameBuffers[tag] = value ?? "";
     }
 
     // ═══════════════════════════════════════════════════════
@@ -1662,12 +1742,13 @@
     {
         if (!SeriesConfigs.ContainsKey(name))
         {
-            var index = SelectedYAxes.IndexOf(name);
+            var defaultAxis = YAxisConfigs.Keys.FirstOrDefault() ?? "Axis 1";
             SeriesConfigs[name] = new SeriesConfiguration
             {
                 Name = name,
-                Color = GetDefaultColor(index),
-                ChartType = "Line"
+                Color = GetDefaultColor(SeriesConfigs.Count),
+                ChartType = "Line",
+                AxisName = defaultAxis
             };
         }
         return SeriesConfigs[name];
@@ -1687,15 +1768,22 @@
         StateHasChanged();
     }
 
-    private void ToggleSeriesVisibility(string name)
+    private void ToggleSeriesVisibility(string tag)
     {
-        var cfg = GetSeriesConfig(name);
+        var cfg = GetSeriesConfig(tag);
         cfg.IsHidden = !cfg.IsHidden;
 
         if (cfg.IsHidden)
-            HiddenSeries.Add(name);
+        {
+            HiddenSeries.Add(tag);
+            if (cfg.ShowTrendline)
+                HiddenSeries.Add($"{tag}_trend");
+        }
         else
-            HiddenSeries.Remove(name);
+        {
+            HiddenSeries.Remove(tag);
+            HiddenSeries.Remove($"{tag}_trend");
+        }
 
         _chartKey++;
         StateHasChanged();
@@ -1709,22 +1797,46 @@
 
     private void MoveSeriesUp(string name)
     {
-        var idx = SelectedYAxes.IndexOf(name);
+        var idx = SelectedTags.IndexOf(name);
         if (idx <= 0) return;
-        SelectedYAxes.RemoveAt(idx);
-        SelectedYAxes.Insert(idx - 1, name);
+        SelectedTags.RemoveAt(idx);
+        SelectedTags.Insert(idx - 1, name);
         _chartKey++;
         StateHasChanged();
     }
 
     private void MoveSeriesDown(string name)
     {
-        var idx = SelectedYAxes.IndexOf(name);
-        if (idx < 0 || idx >= SelectedYAxes.Count - 1) return;
-        SelectedYAxes.RemoveAt(idx);
-        SelectedYAxes.Insert(idx + 1, name);
+        var idx = SelectedTags.IndexOf(name);
+        if (idx < 0 || idx >= SelectedTags.Count - 1) return;
+        SelectedTags.RemoveAt(idx);
+        SelectedTags.Insert(idx + 1, name);
         _chartKey++;
         StateHasChanged();
+    }
+
+    private void SetSeriesAxis(string tag, string axisName)
+    {
+        var cfg = GetSeriesConfig(tag);
+        cfg.AxisName = axisName ?? YAxisConfigs.Keys.FirstOrDefault() ?? "Axis 1";
+        _chartKey++;
+        StateHasChanged();
+    }
+
+
+    private void AddYAxisForSeries(string tag)
+    {
+        var newAxisName = GetNextAxisName();
+        YAxisConfigs[newAxisName] = new YAxisConfiguration { Name = newAxisName, Title = newAxisName };
+        if (!YAxisOrder.Contains(newAxisName)) YAxisOrder.Add(newAxisName);
+        SetSeriesAxis(tag, newAxisName);
+    }
+
+    private string GetNextAxisName()
+    {
+        int i = 1;
+        while (YAxisConfigs.ContainsKey($"Axis {i}")) i++;
+        return $"Axis {i}";
     }
 
     private void SetYAxisPosition(string axisId, string position)
@@ -1732,10 +1844,6 @@
         var pos = position ?? "Left";
         var yConfig = GetYAxisConfig(axisId);
         yConfig.Position = pos;
-
-        if (SeriesConfigs.ContainsKey(axisId))
-            SeriesConfigs[axisId].AxisAssignment = pos == "Right" ? "Right" : "Left";
-
         _chartKey++;
         StateHasChanged();
     }
@@ -1745,32 +1853,33 @@
         var yConfig = GetYAxisConfig(axisId);
         yConfig.Visible = visible;
 
-        // If axis is hidden, hide its series (and trendline) so they are not rendered.
+        // When axis is hidden, optionally hide series mapped to it
         if (!visible)
         {
-            if (SeriesConfigs.TryGetValue(axisId, out var sCfg))
+            var mapped = SeriesConfigs.Where(kv => kv.Value.AxisName == axisId);
+            foreach (var kv in mapped)
             {
-                sCfg.IsHidden = true;
-                HiddenSeries.Add(axisId);
-
-                if (sCfg.ShowTrendline)
-                    HiddenSeries.Add($"{axisId} Trend");
+                kv.Value.IsHidden = true;
+                HiddenSeries.Add(kv.Key);
+                if (kv.Value.ShowTrendline)
+                    HiddenSeries.Add($"{kv.Key}_trend");
             }
         }
         else
         {
-            // When making axis visible again, restore series visibility only if it was auto-hidden by axis hide.
-            if (SeriesConfigs.TryGetValue(axisId, out var sCfg))
+            var mapped = SeriesConfigs.Where(kv => kv.Value.AxisName == axisId);
+            foreach (var kv in mapped)
             {
-                if (HiddenSeries.Contains(axisId))
+                if (HiddenSeries.Contains(kv.Key))
                 {
-                    HiddenSeries.Remove(axisId);
-                    sCfg.IsHidden = false;
+                    HiddenSeries.Remove(kv.Key);
+                }
+                if (HiddenSeries.Contains($"{kv.Key}_trend"))
+                {
+                    HiddenSeries.Remove($"{kv.Key}_trend");
                 }
 
-                var trendName = $"{axisId} Trend";
-                if (HiddenSeries.Contains(trendName) && sCfg.ShowTrendline)
-                    HiddenSeries.Remove(trendName);
+                kv.Value.IsHidden = false;
             }
         }
 
@@ -1786,38 +1895,66 @@
     {
         var axes = new List<string>();
 
-        foreach (var y in SelectedYAxes)
+        // Start from explicit order if available
+        if (YAxisOrder != null && YAxisOrder.Any())
         {
-            if (!axes.Contains(y))
-                axes.Add(y);
+            foreach (var k in YAxisOrder)
+            {
+                if (!axes.Contains(k) && YAxisConfigs.ContainsKey(k))
+                    axes.Add(k);
+            }
+        }
+        else
+        {
+            foreach (var key in YAxisConfigs.Keys)
+            {
+                if (!axes.Contains(key))
+                    axes.Add(key);
+            }
         }
 
+        // ensure axes referenced by series exist and append in deterministic order
+        foreach (var s in SeriesConfigs.Values)
+        {
+            if (!string.IsNullOrEmpty(s.AxisName) && !axes.Contains(s.AxisName))
+                axes.Add(s.AxisName);
+        }
+
+        // also ensure any YAxisConfigs keys not yet included are appended
         foreach (var key in YAxisConfigs.Keys)
         {
             if (!axes.Contains(key))
                 axes.Add(key);
         }
 
+        // Keep YAxisOrder in sync with final axes order
+        YAxisOrder = axes.ToList();
+
         return axes;
     }
 
-    private async Task OnSelectedYAxesChanged(List<string> values)
+    private async Task OnSelectedTagsChanged(List<string> values)
     {
         var newSelection = values ?? new List<string>();
 
-        // determine removed series (present in configs but not in new selection)
         var removed = SeriesConfigs.Keys.Except(newSelection).ToList();
 
         foreach (var key in removed)
         {
             SeriesConfigs.Remove(key);
-            YAxisConfigs.Remove(key);
+            // remove any hidden entries that used the previous keys
             HiddenSeries.Remove(key);
-            HiddenSeries.Remove($"{key} Trend");
+            HiddenSeries.Remove($"{key}_trend");
+            if (SeriesRenameBuffers.ContainsKey(key))
+                SeriesRenameBuffers.Remove(key);
         }
 
-        // update SelectedYAxes and force chart refresh
-        SelectedYAxes = newSelection;
+        SelectedTags = newSelection;
+
+        // ensure each selected tag has a configuration and default axis
+        foreach (var tag in SelectedTags)
+            _ = GetSeriesConfig(tag);
+
         _chartKey++;
         await InvokeAsync(StateHasChanged);
     }
@@ -1837,7 +1974,84 @@
             YAxisConfigs[axisId] = cfg;
         }
 
+        if (!YAxisOrder.Contains(axisId))
+            YAxisOrder.Add(axisId);
+
         return YAxisConfigs[axisId];
+    }
+
+    private void AddYAxis()
+    {
+        var name = GetNextAxisName();
+        YAxisConfigs[name] = new YAxisConfiguration { Name = name, Title = name };
+        if (!YAxisOrder.Contains(name)) YAxisOrder.Add(name);
+        _chartKey++;
+        StateHasChanged();
+    }
+
+    private void RemoveYAxis(string axisId)
+    {
+        if (!YAxisConfigs.ContainsKey(axisId)) return;
+
+        // remap any series using this axis to a default axis if possible
+        var remaining = YAxisConfigs.Keys.Where(k => k != axisId).ToList();
+        string fallback = remaining.FirstOrDefault() ?? null;
+
+        foreach (var s in SeriesConfigs.Values.Where(s => s.AxisName == axisId))
+        {
+            s.AxisName = fallback;
+        }
+
+        YAxisConfigs.Remove(axisId);
+        if (YAxisOrder.Contains(axisId)) YAxisOrder.Remove(axisId);
+
+        _chartKey++;
+        StateHasChanged();
+    }
+
+    private bool AxisHasNegativeValues(string axisId)
+    {
+        // Check selected tags mapped to this axis
+        foreach (var tag in SelectedTags)
+        {
+            var cfg = SeriesConfigs.TryGetValue(tag, out var c) ? c : null;
+            if (cfg == null) continue;
+            if (cfg.AxisName != axisId) continue;
+
+            var series = GetSeriesData(tag);
+            if (series.Any(s => s.Value < 0.0))
+            {
+                return true;
+            }
+        }
+
+        // No negative values found for mapped series
+        return false;
+    }
+
+    // New: Move Y axis up/down in YAxisOrder
+    private void MoveYAxisUp(string axisId)
+    {
+        var idx = YAxisOrder.IndexOf(axisId);
+        if (idx > 0)
+        {
+            YAxisOrder.RemoveAt(idx);
+            YAxisOrder.Insert(idx - 1, axisId);
+            _chartKey++;
+            StateHasChanged();
+        }
+    }
+
+    private void MoveYAxisDown(string axisId)
+    {
+        var idx = YAxisOrder.IndexOf(axisId);
+        if (idx >= 0 && idx < YAxisOrder.Count - 1)
+        {
+            YAxisOrder.RemoveAt(idx);
+            YAxisOrder.Insert(idx + 1, axisId);
+            _chartKey++;
+            StateHasChanged();
+        }
     }
 
     // ═══════════════════════════════════════════════════════
@@ -1902,7 +2116,7 @@
         _ => ChartSeriesType.LinearTrendline
     };
 
-    // Generate visually distinct default color per series index using golden-angle hue spacing.
+    // Generate distinct default color per series
     private string GetDefaultColor(int index)
     {
         double hue = (index * 137.508) % 360.0;
@@ -1943,6 +2157,12 @@
         if (string.IsNullOrEmpty(seriesName))
             return TooltipBackground ?? "#ffffff";
 
+        // seriesName here is the display name; try to find a matching config by display name
+        var kv = SeriesConfigs.FirstOrDefault(k => (k.Value.Name ?? k.Key) == seriesName);
+        if (!kv.Equals(default(KeyValuePair<string, SeriesConfiguration>)) && !string.IsNullOrEmpty(kv.Value?.Color))
+            return kv.Value.Color;
+
+        // fallback: try if seriesName matches key/tag
         if (SeriesConfigs.TryGetValue(seriesName, out var cfg) && !string.IsNullOrEmpty(cfg.Color))
             return cfg.Color;
 
@@ -1983,7 +2203,7 @@
     private object[] GetCategoryAxisCrossings()
     {
         var axes = GetDistinctYAxes();
-        var data = GetAggregatedVisibleData();
+        var data = ChartData;
         int count = Math.Max(1, data.Count);
         var crossings = new List<object>();
 
@@ -2000,8 +2220,6 @@
             }
         }
 
-        // crossings.Add(double.MinValue);
-
         return crossings.ToArray();
     }
 
@@ -2009,6 +2227,30 @@
     // ═══════════════════════════════════════════════════════
     //  DATA LOADING
     // ═══════════════════════════════════════════════════════
+
+    private async Task LoadDistinctTagsFromDb()
+    {
+        // Populate TagOptions with a new list reference so the MultiSelect sees the change immediately
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var tags = await db.SensorReadings
+            .Select(x => x.Tag)
+            .Distinct()
+            .OrderBy(t => t)
+            .ToListAsync();
+
+        TagOptions = tags.Select(t => new FieldOption { Text = t, Value = t }).ToList();
+
+        // don't auto-select; leave it to user. but ensure default axis exists
+        if (!YAxisConfigs.Any())
+        {
+            YAxisConfigs["Axis 1"] = new YAxisConfiguration { Name = "Axis 1", Title = "Axis 1" };
+            if (!YAxisOrder.Contains("Axis 1")) YAxisOrder.Add("Axis 1");
+        }
+
+        // Force immediate UI update so the MultiSelect shows options without switching tabs
+        await InvokeAsync(StateHasChanged);
+    }
 
     private async Task LoadDataForWindow(DateTime anchorMax)
     {
@@ -2127,9 +2369,10 @@
             .ToList();
     }
 
-    private List<AggregatedReading> GetAggregatedVisibleData()
+    // Returns aggregated series data for a specific tag (groups by base unit)
+    private List<AggregatedReading> GetSeriesData(string tag)
     {
-        var data = GetVisibleData();
+        var data = GetVisibleData().Where(x => x.Tag == tag).ToList();
         if (!data.Any()) return new();
 
         var unit = GetBaseUnit();
@@ -2139,10 +2382,7 @@
             return data.Select(x => new AggregatedReading
             {
                 Time = x.Time,
-                Temperature = x.Temperature,
-                Pressure = x.Pressure,
-                Humidity = x.Humidity,
-                Voltage = x.Voltage
+                Value = x.Value
             }).ToList();
         }
 
@@ -2160,11 +2400,7 @@
         return groups.Select(g => new AggregatedReading
         {
             Time = g.Key,
-            // average sensor readings for grouped buckets
-            Temperature = g.Average(x => x.Temperature),
-            Pressure = g.Average(x => x.Pressure),
-            Humidity = g.Average(x => x.Humidity),
-            Voltage = g.Average(x => x.Voltage)
+            Value = g.Average(x => x.Value)
         })
         .OrderBy(x => x.Time)
         .ToList();
@@ -2404,20 +2640,55 @@
 
     private void OnLegendItemClick(ChartLegendItemClickEventArgs args)
     {
-        var seriesName = args.Text;
-        if (string.IsNullOrEmpty(seriesName)) return;
+        var seriesDisplayName = args.Text;
+        if (string.IsNullOrEmpty(seriesDisplayName)) return;
 
-        if (HiddenSeries.Contains(seriesName))
+        var trendSuffix = " Trend";
+        var isTrend = seriesDisplayName.EndsWith(trendSuffix);
+        var baseDisplayName = isTrend ? seriesDisplayName[..^trendSuffix.Length] : seriesDisplayName;
+
+        // Try to map display name back to a tag key (SeriesConfigs key)
+        var match = SeriesConfigs.FirstOrDefault(kv => (kv.Value.Name ?? kv.Key) == baseDisplayName);
+        string tagKey = null;
+
+        if (!match.Equals(default(KeyValuePair<string, SeriesConfiguration>)) && match.Value != null)
         {
-            HiddenSeries.Remove(seriesName);
-            if (SeriesConfigs.ContainsKey(seriesName))
-                SeriesConfigs[seriesName].IsHidden = false;
+            tagKey = match.Key;
+        }
+        else if (SeriesConfigs.ContainsKey(baseDisplayName))
+        {
+            // fallback: displayName is the tag key
+            tagKey = baseDisplayName;
+        }
+
+        if (string.IsNullOrEmpty(tagKey)) return;
+
+        if (isTrend)
+        {
+            var trendKey = $"{tagKey}_trend";
+            if (HiddenSeries.Contains(trendKey))
+                HiddenSeries.Remove(trendKey);
+            else
+                HiddenSeries.Add(trendKey);
         }
         else
         {
-            HiddenSeries.Add(seriesName);
-            if (SeriesConfigs.ContainsKey(seriesName))
-                SeriesConfigs[seriesName].IsHidden = true;
+            if (HiddenSeries.Contains(tagKey))
+            {
+                HiddenSeries.Remove(tagKey);
+                if (SeriesConfigs.ContainsKey(tagKey))
+                    SeriesConfigs[tagKey].IsHidden = false;
+            }
+            else
+            {
+                HiddenSeries.Add(tagKey);
+                if (SeriesConfigs.ContainsKey(tagKey))
+                    SeriesConfigs[tagKey].IsHidden = true;
+
+                // also hide trendline if present
+                if (SeriesConfigs.TryGetValue(tagKey, out var cfg) && cfg.ShowTrendline)
+                    HiddenSeries.Add($"{tagKey}_trend");
+            }
         }
 
         StateHasChanged();
@@ -2426,20 +2697,23 @@
     private void ShowAllSeries()
     {
         HiddenSeries.Clear();
-        foreach (var cfg in SeriesConfigs.Values)
-            cfg.IsHidden = false;
+        foreach (var cfgKvp in SeriesConfigs)
+        {
+            cfgKvp.Value.IsHidden = false;
+        }
         StateHasChanged();
     }
 
     private void HideAllSeries()
     {
-        foreach (var y in SelectedYAxes)
+        foreach (var tag in SelectedTags)
         {
-            HiddenSeries.Add(y);
-            GetSeriesConfig(y).IsHidden = true;
+            var cfg = GetSeriesConfig(tag);
+            HiddenSeries.Add(tag);
+            cfg.IsHidden = true;
 
-            if (GetSeriesConfig(y).ShowTrendline)
-                HiddenSeries.Add($"{y} Trend");
+            if (cfg.ShowTrendline)
+                HiddenSeries.Add($"{tag}_trend");
         }
         StateHasChanged();
     }
@@ -2451,20 +2725,106 @@
 
     private void AddPlotBand()
     {
+        var defaultAxis = SelectedTags.FirstOrDefault() ?? GetDistinctYAxes().FirstOrDefault() ?? "";
+
         PlotBands.Add(new PlotBandConfig
         {
+            AxisName = defaultAxis,
             From = 0,
             To = 100,
             Color = "#ff6358",
             Opacity = 0.15,
-            Label = $"Band {PlotBands.Count + 1}"
         });
+        _chartKey++;
+        StateHasChanged();
+    }
+
+    private void RemovePlotBand(int index)
+    {
+        if (index < 0 || index >= PlotBands.Count) return;
+        PlotBands.RemoveAt(index);
+        _chartKey++;
+        StateHasChanged();
     }
 
     private void ResetToDefaults()
     {
+        // Preserve existing axis keys and titles so user-created axes are not deleted
+        var preservedAxisTitles = YAxisConfigs.ToDictionary(kv => kv.Key, kv => kv.Value.Title);
+
+        // Preserve existing series -> axis mappings so mappings survive reset
+        var seriesAxisMap = SeriesConfigs.ToDictionary(kv => kv.Key, kv => kv.Value.AxisName);
+
+        // Clear series-level configuration then recreate defaults for the currently selected tags
         SeriesConfigs.Clear();
+        SeriesRenameBuffers.Clear();
+
+        var defaultAxis = YAxisConfigs.Keys.FirstOrDefault() ?? "Axis 1";
+        int i = 0;
+        foreach (var tag in SelectedTags)
+        {
+            i++;
+            var axisName = seriesAxisMap.TryGetValue(tag, out var mapped) && !string.IsNullOrEmpty(mapped)
+                ? mapped
+                : defaultAxis;
+
+            SeriesConfigs[tag] = new SeriesConfiguration
+            {
+                Name = "", // Reset display name so UI shows tag by default
+                ChartType = "Line",
+                Color = GetDefaultColor(i),
+                LineStyle = "Solid",
+                LineWidth = 2,
+                IsSmooth = true,
+                ShowMarkers = false,
+                MarkerType = "Circle",
+                MarkerSize = 6,
+                AreaOpacity = 0.5,
+                BarGap = 1.5,
+                BorderWidth = 0,
+                BorderColor = "#000000",
+                ShowDataLabels = false,
+                DataLabelFormat = "N0",
+                DataLabelPosition = "Above",
+                AxisName = axisName, // preserve mapping
+                ShowTrendline = false,
+                TrendlineType = "Linear",
+                TrendlineColor = "#999999",
+                IsHidden = false,
+                IsExpanded = false
+            };
+        }
+
+        // Rebuild YAxisConfigs keeping the axis entries (names/titles) but reset their settings
+        var existingAxisKeys = YAxisConfigs.Keys.ToList();
         YAxisConfigs.Clear();
+        foreach (var key in existingAxisKeys)
+        {
+            var title = preservedAxisTitles.TryGetValue(key, out var t) ? t : key;
+            YAxisConfigs[key] = new YAxisConfiguration
+            {
+                Name = key,
+                Title = title,
+                Visible = true,
+                Position = "Left",
+                Min = null,
+                Max = null,
+                AxisColor = "#000000",
+                ShowMajorTicks = true,
+                MajorUnit = null,
+                ShowMajorGridLines = true,
+                MajorGridDash = "Solid",
+                MajorGridColor = "#dddddd",
+                ShowMinorTicks = false,
+                MinorUnit = null,
+                IsExpanded = true
+            };
+        }
+
+        // Preserve axis order
+        YAxisOrder = existingAxisKeys.ToList();
+
+        // Clear other UI / chart state
         PlotBands.Clear();
         HiddenSeries.Clear();
         XAxisConfig = new();
@@ -2485,7 +2845,6 @@
         CustomChartTitle = "";
         RefreshIntervalMs = 100;
 
-        // reset layout
         ChartMarginTop = 8;
         ChartMarginRight = 8;
         ChartMarginBottom = 8;
@@ -2498,6 +2857,14 @@
         GlobalYAxisMin = null;
         GlobalYAxisMax = null;
 
+        // Ensure at least one axis remains
+        if (!YAxisConfigs.Any())
+        {
+            YAxisConfigs["Axis 1"] = new YAxisConfiguration { Name = "Axis 1", Title = "Axis 1" };
+            if (!YAxisOrder.Contains("Axis 1")) YAxisOrder.Add("Axis 1");
+        }
+
+        _chartKey++;
         StateHasChanged();
     }
 
@@ -2565,8 +2932,6 @@
 
     private string GetXAxisTitle()
     {
-        if (string.IsNullOrEmpty(SelectedXAxis)) return "";
-
         var unitName = GetBaseUnit() switch
         {
             ChartCategoryAxisBaseUnit.Seconds => "Seconds",
@@ -2586,103 +2951,31 @@
         _ => ChartLegendPosition.Right
     };
 
-    private string GetDynamicChartTitle()
-    {
-        if (!string.IsNullOrEmpty(CustomChartTitle))
-            return CustomChartTitle;
-
-        if (!SelectedYAxes.Any())
-            return "Live Trend Chart";
-
-        var yDescriptions = SelectedYAxes
-            .Select(y =>
-            {
-                var cfg = GetSeriesConfig(y);
-                var visibility = cfg.IsHidden ? " [Hidden]" : "";
-                return $"{y} ({cfg.ChartType}){visibility}";
-            });
-
-        string stateText = (IsLiveMode && !IsPaused) ? "● Live"
-            : (IsPaused && PausedByInteraction) ? "⚠ Auto-Paused"
-            : IsPaused ? "⏸ Paused"
-            : "📜 History";
-
-        int visibleCount = SelectedYAxes.Count(y => !GetSeriesConfig(y).IsHidden && GetYAxisConfig(y).Visible);
-        int totalCount = SelectedYAxes.Count;
-
-        return $"{string.Join(", ", yDescriptions)} | {SelectedRange} | {stateText} | {visibleCount}/{totalCount}";
-    }
-
     private void OpenChart() => ShowWindow = true;
 
-    // Auto set global Y min/max from currently visible aggregated data
+    // Auto set global Y min/max from currently visible aggregated data across selected tags
     private void AutoSetGlobalYRange()
     {
-        var data = GetAggregatedVisibleData();
-        if (!data.Any() || !SelectedYAxes.Any())
-            return;
-
-        double min = double.MaxValue;
-        double max = double.MinValue;
-
-        foreach (var row in data)
+        var allVals = new List<double>();
+        foreach (var tag in SelectedTags)
         {
-            foreach (var y in SelectedYAxes)
-            {
-                var prop = row.GetType().GetProperty(y);
-                if (prop == null) continue;
-                var val = prop.GetValue(row);
-                if (val == null) continue;
-                if (double.TryParse(val.ToString(), out var d))
-                {
-                    if (d < min) min = d;
-                    if (d > max) max = d;
-                }
-            }
+            var series = GetSeriesData(tag);
+            allVals.AddRange(series.Select(s => s.Value));
         }
 
-        if (min == double.MaxValue || max == double.MinValue) return;
+        if (!allVals.Any()) return;
 
-        GlobalYAxisMin = min;
-        GlobalYAxisMax = max;
+        GlobalYAxisMin = allVals.Min();
+        GlobalYAxisMax = allVals.Max();
         StateHasChanged();
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  Populate fields dynamically
-    // ═══════════════════════════════════════════════════════
-
-    private void PopulateFieldOptionsFromModel()
+    // Helper to produce options for axis dropdowns
+    private List<FieldOption> GetYAxisOptions()
     {
-        XAxisOptions.Clear();
-        YAxisOptions.Clear();
-
-        var props = typeof(SensorReading).GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-
-        foreach (var p in props)
-        {
-            // Skip internal/identifier fields
-            if (string.Equals(p.Name, "Id", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            var underlying = Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType;
-
-            if (underlying == typeof(DateTime))
-            {
-                XAxisOptions.Add(new FieldOption { Text = p.Name, Value = p.Name });
-            }
-            else if (IsNumericType(underlying))
-            {
-                YAxisOptions.Add(new FieldOption { Text = p.Name, Value = p.Name });
-            }
-        }
-
-        // set sensible defaults if not already set
-        // if (string.IsNullOrEmpty(SelectedXAxis) && XAxisOptions.Any())
-        //     SelectedXAxis = XAxisOptions[0].Value;
-
-
+        return GetDistinctYAxes().Select(a => new FieldOption { Text = a, Value = a }).ToList();
     }
+
 
     private static bool IsNumericType(Type t)
     {
@@ -2703,8 +2996,6 @@
 
         return numericTypes.Contains(t);
     }
-
-    // ═══════════════════════════════════════════════════════
 
     public void Dispose()
     {
@@ -2936,6 +3227,24 @@
         padding: 10px;
         background: #fff;
         font-size: 14px;
+    }
+
+    .mapped-series-list {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+        color: #555;
+        font-size: 13px;
+    }
+
+    .mapped-series-item {
+        background: #f0f0f0;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        color: #333;
     }
 
 

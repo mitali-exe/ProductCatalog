@@ -18,10 +18,8 @@ namespace ProductCatalog.Migrations
                     Id = table.Column<int>(type: "int", nullable: false)
                         .Annotation("SqlServer:Identity", "1, 1"),
                     Time = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    Temperature = table.Column<double>(type: "float", nullable: false),
-                    Pressure = table.Column<double>(type: "float", nullable: false),
-                    Humidity = table.Column<double>(type: "float", nullable: false),
-                    Voltage = table.Column<double>(type: "float", nullable: false)
+                    Tag = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Value = table.Column<double>(type: "float", nullable: false)
                 },
                 constraints: table =>
                 {

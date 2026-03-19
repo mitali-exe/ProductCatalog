@@ -32,10 +32,6 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xEeW5hbWljQ2hhcnQucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
-[C:/Users/mitali.srivastav/source/repos/ProductCatalog/ProductCatalog/Components/Pages/DynamicChartBuilder.razor]
-build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xEeW5hbWljQ2hhcnRCdWlsZGVyLnJhem9y
-build_metadata.AdditionalFiles.CssScope = 
-
 [C:/Users/mitali.srivastav/source/repos/ProductCatalog/ProductCatalog/Components/Pages/Error.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xFcnJvci5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
@@ -54,6 +50,10 @@ build_metadata.AdditionalFiles.CssScope =
 
 [C:/Users/mitali.srivastav/source/repos/ProductCatalog/ProductCatalog/Components/Pages/TrendPage.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xUcmVuZFBhZ2UucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[C:/Users/mitali.srivastav/source/repos/ProductCatalog/ProductCatalog/Components/Pages/Trends.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50c1xQYWdlc1xUcmVuZHMucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
 
 [C:/Users/mitali.srivastav/source/repos/ProductCatalog/ProductCatalog/Components/Routes.razor]

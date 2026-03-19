@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace ProductCatalog.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260313044306_new")]
+    [Migration("20260317113656_new")]
     partial class @new
     {
         /// <inheritdoc />
@@ -23,32 +23,6 @@ namespace ProductCatalog.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
-
-            modelBuilder.Entity("ProductCatalog.Models.SalesReport", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Months")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<double>("Profit")
-                        .HasColumnType("float");
-
-                    b.Property<double>("Revenue")
-                        .HasColumnType("float");
-
-                    b.Property<double>("Sales")
-                        .HasColumnType("float");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("SalesReports");
-                });
 
             modelBuilder.Entity("ProductCatalog.Models.SalesReport2", b =>
                 {
@@ -87,19 +61,14 @@ namespace ProductCatalog.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<double>("Humidity")
-                        .HasColumnType("float");
-
-                    b.Property<double>("Pressure")
-                        .HasColumnType("float");
-
-                    b.Property<double>("Temperature")
-                        .HasColumnType("float");
+                    b.Property<string>("Tag")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("Time")
                         .HasColumnType("datetime2");
 
-                    b.Property<double>("Voltage")
+                    b.Property<double>("Value")
                         .HasColumnType("float");
 
                     b.HasKey("Id");

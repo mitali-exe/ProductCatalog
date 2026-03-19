@@ -6,12 +6,10 @@
 
         public DateTime Time { get; set; }
 
-        public double Temperature { get; set; }   // °C (can be negative)
+        // Tag name (e.g. "Temperature", "Pressure", ...)
+        public string Tag { get; set; } = string.Empty;
 
-        public double Pressure { get; set; }      // kPa
-
-        public double Humidity { get; set; }      // %
-
-        public double Voltage { get; set; }       // volts
+        // Numeric value for the tag at the given time
+        public double Value { get; set; }
     }
 }
