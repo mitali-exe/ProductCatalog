@@ -9,7 +9,7 @@
 
 // This file contains provisioning of Telerik products runtime usage.
 
-[assembly: Telerik.Licensing.LicenseUsedDateAttribute("2026-03-19")]
+[assembly: Telerik.Licensing.LicenseUsedDateAttribute("2026-03-23")]
 
 [assembly: Telerik.Licensing.ProductReferenceAttribute("BLAZOR", "2025-12-18", "", "Telerik UI for Blazor", "12.2.0.0")]
 [assembly: Telerik.Licensing.ProductReferenceAttribute("DPL", "2025-12-16", "RCWPF;RCWF;MAUI;UIXAM;WINUI;RCAJAX;KENDOUIMVC;UIASPCORE;BLAZOR", "Telerik Document Processing Libraries", "2025.4.1216.20")]

@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @using Telerik.Blazor
 @using Telerik.Blazor.Components
 @using System.Timers
@@ -90,7 +90,7 @@
                             @if (!SelectedTags.Any())
                             {
                                 <div class="empty-state">
-                                    <p>Select tags in the Data tab first.</p>
+                                    <p>Select Tags in the Data tab first.</p>
                                 </div>
                             }
 
@@ -237,10 +237,78 @@
                                                 }
                                             }
 
+                                            <!-- Area-specific -->
+                                            @if (config.ChartType == "Area")
+                                            {
+                                                <div class="config-row">
+                                                    <label>Fill Opacity</label>
+                                                    <TelerikDropDownList Data="@AreaOpacityOptions"
+                                                                         @bind-Value="config.AreaOpacity"
+                                                                         Width="100%" />
+                                                </div>
+
+                                                <div class="config-row inline">
+                                                    <label>Smooth Curve</label>
+                                                    <TelerikSwitch @bind-Value="config.IsSmooth" />
+                                                </div>
+
+                                                <div class="config-row inline">
+                                                    <label>Show Markers</label>
+                                                    <TelerikSwitch @bind-Value="config.ShowMarkers" />
+                                                </div>
+
+                                                @if (config.ShowMarkers)
+                                                {
+                                                    <div class="config-row">
+                                                        <label>Marker Type</label>
+                                                        <TelerikDropDownList Data="@MarkerTypes"
+                                                                             TextField="Text"
+                                                                             ValueField="Value"
+                                                                             Value="@config.MarkerType"
+                                                                             ValueChanged="@((string v) => config.MarkerType = v)"
+                                                                             Width="100%" />
+                                                    </div>
+
+                                                    <div class="config-row">
+                                                        <label>Marker Size</label>
+                                                        <TelerikDropDownList Data="@MarkerSizeOptions"
+                                                                             @bind-Value="config.MarkerSize"
+                                                                             Width="100%" />
+                                                    </div>
+                                                }
+                                            }
+
+                                            <!-- Bar/Column specific -->
+                                            @if (config.ChartType is "Bar" or "Column")
+                                            {
+                                                <div class="config-row">
+                                                    <label>Gap Between Bars</label>
+                                                    <TelerikDropDownList Data="@BarGapOptions"
+                                                                         @bind-Value="config.BarGap"
+                                                                         Width="100%" />
+                                                </div>
+
+                                                <div class="config-row">
+                                                    <label>Border Width</label>
+                                                    <TelerikDropDownList Data="@BorderWidthOptions"
+                                                                         @bind-Value="config.BorderWidth"
+                                                                         Width="100%" />
+                                                </div>
+
+                                                <div class="config-row">
+                                                    <label>Border Color</label>
+                                                    <input type="color"
+                                                           value="@config.BorderColor"
+                                                           @onchange="@((ChangeEventArgs e) => config.BorderColor = e.Value?.ToString() ?? "#000")"
+                                                           class="custom-color-input" />
+                                                </div>
+                                            }
+
                                             <!-- Data Labels -->
                                             <div class="config-row inline">
                                                 <label>Show Data Labels</label>
-                                                <TelerikSwitch @bind-Value="config.ShowDataLabels" />
+                                                <TelerikSwitch Value="@config.ShowDataLabels"
+                                                               ValueChanged="@((bool v) => { GetSeriesConfig(tag).ShowDataLabels = v; InvalidateChart(); })" />
                                             </div>
 
                                             @if (config.ShowDataLabels)
@@ -548,6 +616,7 @@
                             @foreach (var axisId in GetDistinctYAxes())
                             {
                                 var yConfig = GetYAxisConfig(axisId);
+                                var isFirstAxisInOrder = GetDistinctYAxes().IndexOf(axisId) == 0;
 
                                 var mapped = SeriesConfigs
                                 .Where(kv => kv.Value.AxisName == axisId)
@@ -656,30 +725,33 @@
                                                                            Width="100%" Format="N0" />
                                                 </div>
 
-                                                <div class="config-row inline">
-                                                    <label>Grid Lines</label>
-                                                    <TelerikSwitch @bind-Value="yConfig.ShowMajorGridLines" />
-                                                </div>
-
-                                                @if (yConfig.ShowMajorGridLines)
+                                                @if (isFirstAxisInOrder)
                                                 {
-                                                    <div class="config-row">
-                                                        <label>Grid Dash</label>
-                                                        <TelerikDropDownList Data="@DashTypes"
-                                                                             TextField="Text"
-                                                                             ValueField="Value"
-                                                                             Value="@yConfig.MajorGridDash"
-                                                                             ValueChanged="@((string v) => yConfig.MajorGridDash = v)"
-                                                                             Width="100%" />
+                                                    <div class="config-row inline">
+                                                        <label>Grid Lines</label>
+                                                        <TelerikSwitch @bind-Value="yConfig.ShowMajorGridLines" />
                                                     </div>
 
-                                                    <div class="config-row">
-                                                        <label>Grid Color</label>
-                                                        <input type="color"
-                                                               value="@yConfig.MajorGridColor"
-                                                               @onchange="@((ChangeEventArgs e) => yConfig.MajorGridColor = e.Value?.ToString() ?? "#ddd")"
-                                                               class="custom-color-input" />
-                                                    </div>
+                                                    @if (yConfig.ShowMajorGridLines)
+                                                    {
+                                                        <div class="config-row">
+                                                            <label>Grid Dash</label>
+                                                            <TelerikDropDownList Data="@DashTypes"
+                                                                                 TextField="Text"
+                                                                                 ValueField="Value"
+                                                                                 Value="@yConfig.MajorGridDash"
+                                                                                 ValueChanged="@((string v) => yConfig.MajorGridDash = v)"
+                                                                                 Width="100%" />
+                                                        </div>
+
+                                                        <div class="config-row">
+                                                            <label>Grid Color</label>
+                                                            <input type="color"
+                                                                   value="@yConfig.MajorGridColor"
+                                                                   @onchange="@((ChangeEventArgs e) => yConfig.MajorGridColor = e.Value?.ToString() ?? "#ddd")"
+                                                                   class="custom-color-input" />
+                                                        </div>
+                                                    }
                                                 }
                                             }
                                         </div>
@@ -706,7 +778,8 @@
                                         <div style="margin-top:8px;">
                                             <TelerikButton ThemeColor="ThemeColor.Error" Size="sm"
                                                            OnClick="@( () => RemoveYAxis(axisId))"
-                                                           Icon="@SvgIcon.Trash">
+                                                           Icon="@SvgIcon.Trash"
+                                                           Enabled="@(GetDistinctYAxes().Count > 1)">
                                                 Remove Axis
                                             </TelerikButton>
                                         </div>
@@ -779,7 +852,8 @@
 
                             <div class="config-row inline">
                                 <label>Visible</label>
-                                <TelerikSwitch @bind-Value="LegendMarkerVisible" />
+                                <TelerikSwitch Value="@LegendMarkerVisible"
+                                               ValueChanged="@((bool v) => { LegendMarkerVisible = v; InvalidateChart(); })" />
                             </div>
 
                             @if (LegendMarkerVisible)
@@ -873,7 +947,8 @@
 
                             <div class="config-row">
                                 <label>Chart Title</label>
-                                <TelerikTextBox @bind-Value="CustomChartTitle"
+                                <TelerikTextBox Value="@CustomChartTitle"
+                                                ValueChanged="@OnCustomChartTitleChanged"
                                                 Placeholder="Auto-generated"
                                                 Width="100%" />
                             </div>
@@ -951,6 +1026,98 @@
                             </div>
 
                             <hr />
+
+                            <!-- Plot Bands -->
+                            <div class="section-title">
+                                <TelerikSvgIcon Icon="@SvgIcon.Layout" /> Plot Bands
+                                <div style="margin-left:auto;">
+                                    <TelerikButton Size="sm" OnClick="@AddPlotBand" Icon="@SvgIcon.Plus">
+                                        Add Plot Band
+                                    </TelerikButton>
+                                </div>
+                            </div>
+
+                            @if (!PlotBands.Any())
+                            {
+                                <div class="empty-state">
+                                    <p>No plot bands defined. Click "Add Plot Band" to create one.</p>
+                                </div>
+                            }
+                            else
+                            {
+                                @for (int i = 0; i < PlotBands.Count; i++)
+                                {
+                                    var band = PlotBands[i];
+                                    var idx = i;
+                                    <div class="plot-band-card">
+                                        <div class="d-flex" style="gap:8px; align-items:center;">
+                                            <div style="flex:1;">
+
+                                                <div class="config-row">
+                                                    <label>Axis</label>
+                                                    @if (GetDistinctYAxes().Any())
+                                                    {
+                                                        <TelerikDropDownList Data="GetDistinctYAxes()"
+                                                                             @bind-Value="band.AxisName"
+                                                                             Width="100%"
+                                                                             DefaultText="Select axis" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="text-muted">No Y axes available</div>
+                                                    }
+                                                </div>
+
+                                                <div class="config-row inline" style="gap:8px;">
+                                                    <div style="flex:1;">
+                                                        <label>From</label>
+                                                        <TelerikNumericTextBox @bind-Value="band.From"
+                                                                               Width="100%"
+                                                                               Format="N2" />
+                                                    </div>
+
+                                                    <div style="flex:1;">
+                                                        <label>To</label>
+                                                        <TelerikNumericTextBox @bind-Value="band.To"
+                                                                               Width="100%"
+                                                                               Format="N2" />
+                                                    </div>
+                                                </div>
+
+                                                <div class="config-row inline" style="gap:8px; align-items:center;">
+                                                    <div style="flex:1;">
+                                                        <label>Opacity</label>
+                                                        <TelerikNumericTextBox @bind-Value="band.Opacity"
+                                                                               Min="0"
+                                                                               Max="1"
+                                                                               Step="0.05"
+                                                                               Width="100%"
+                                                                               Format="N2" />
+                                                    </div>
+
+                                                    <div style="width:60px;">
+                                                        <label>Color</label>
+                                                        <input type="color"
+                                                               @bind="band.Color"
+                                                               class="custom-color-input" />
+                                                    </div>
+
+                                                    <div style="margin-top:22px;">
+                                                        <TelerikButton ThemeColor="ThemeColor.Error" Size="sm"
+                                                                       OnClick="@( () => RemovePlotBand(idx))"
+                                                                       Icon="@SvgIcon.Trash">
+                                                            Remove
+                                                        </TelerikButton>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            }
+
+                            <hr />
+
 
                             <div class="config-row" style="margin-top:8px;">
                                 <TelerikButton OnClick="@ResetToDefaults"
@@ -1063,7 +1230,7 @@
                 }
 
                 <span class="badge bg-light text-dark ms-2 border" style="font-size: 0.8rem;">
-                    📊 @ChartData.Count points in memory
+                    📊 @GetPointsInMemoryCount() points in memory
                 </span>
             </div>
 
@@ -1473,7 +1640,6 @@
     // Series & Y axis configuration
     private Dictionary<string, SeriesConfiguration> SeriesConfigs = new();
     private Dictionary<string, YAxisConfiguration> YAxisConfigs = new();
-    // Order for Y axes to allow up/down reordering (preserve order in UI & chart)
     private List<string> YAxisOrder = new();
     private HashSet<string> HiddenSeries = new();
     private List<PlotBandConfig> PlotBands = new();
@@ -1499,6 +1665,7 @@
 
     private double _mouseDownX;
     private bool _isMouseDown;
+    private bool _didDragInCurrentInteraction;
     private DateTime _lastDragSlide = DateTime.MinValue;
     private static readonly TimeSpan DragDebounce = TimeSpan.FromMilliseconds(200);
 
@@ -1513,7 +1680,7 @@
 
 
     // ═══════════════════════════════════════════════════════
-    //  CONFIGURATION MODELS (updated for tag-value historian)
+    //  CONFIGURATION MODELS
     // ═══════════════════════════════════════════════════════
 
     public class SeriesConfiguration
@@ -1534,7 +1701,6 @@
         public bool ShowDataLabels { get; set; } = false;
         public string DataLabelFormat { get; set; } = "N0";
         public string DataLabelPosition { get; set; } = "Above";
-        // AxisName references a named Y axis (e.g. "Axis 1", "Temperature axis", ...)
         public string AxisName { get; set; } = "";
         public bool ShowTrendline { get; set; } = false;
         public string TrendlineType { get; set; } = "Linear";
@@ -1597,7 +1763,6 @@
         public string Label { get; set; }
     }
 
-    // Aggregated reading used by chart series (Time + Value)
     public class AggregatedReading
     {
         public DateTime Time { get; set; }
@@ -1704,7 +1869,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadDistinctTagsFromDb();
-        // create a default axis so user can map tags immediately
+        // create a default axis
         if (!YAxisConfigs.Any())
         {
             YAxisConfigs["Axis 1"] = new YAxisConfiguration { Name = "Axis 1", Title = "Axis 1" };
@@ -1853,7 +2018,7 @@
         var yConfig = GetYAxisConfig(axisId);
         yConfig.Visible = visible;
 
-        // When axis is hidden, optionally hide series mapped to it
+        // When axis is hidden, hide series mapped to it
         if (!visible)
         {
             var mapped = SeriesConfigs.Where(kv => kv.Value.AxisName == axisId);
@@ -1895,7 +2060,6 @@
     {
         var axes = new List<string>();
 
-        // Start from explicit order if available
         if (YAxisOrder != null && YAxisOrder.Any())
         {
             foreach (var k in YAxisOrder)
@@ -1913,21 +2077,18 @@
             }
         }
 
-        // ensure axes referenced by series exist and append in deterministic order
         foreach (var s in SeriesConfigs.Values)
         {
             if (!string.IsNullOrEmpty(s.AxisName) && !axes.Contains(s.AxisName))
                 axes.Add(s.AxisName);
         }
 
-        // also ensure any YAxisConfigs keys not yet included are appended
         foreach (var key in YAxisConfigs.Keys)
         {
             if (!axes.Contains(key))
                 axes.Add(key);
         }
 
-        // Keep YAxisOrder in sync with final axes order
         YAxisOrder = axes.ToList();
 
         return axes;
@@ -1942,7 +2103,6 @@
         foreach (var key in removed)
         {
             SeriesConfigs.Remove(key);
-            // remove any hidden entries that used the previous keys
             HiddenSeries.Remove(key);
             HiddenSeries.Remove($"{key}_trend");
             if (SeriesRenameBuffers.ContainsKey(key))
@@ -1951,9 +2111,16 @@
 
         SelectedTags = newSelection;
 
-        // ensure each selected tag has a configuration and default axis
         foreach (var tag in SelectedTags)
             _ = GetSeriesConfig(tag);
+
+        DateTime anchor = DateTime.Now;
+        if (!IsLiveMode && _windowAnchorMax.HasValue)
+            anchor = _windowAnchorMax.Value;
+        else if (VisibleMax.HasValue)
+            anchor = VisibleMax.Value;
+
+        await LoadDataForWindow(anchor);
 
         _chartKey++;
         await InvokeAsync(StateHasChanged);
@@ -1993,7 +2160,6 @@
     {
         if (!YAxisConfigs.ContainsKey(axisId)) return;
 
-        // remap any series using this axis to a default axis if possible
         var remaining = YAxisConfigs.Keys.Where(k => k != axisId).ToList();
         string fallback = remaining.FirstOrDefault() ?? null;
 
@@ -2011,7 +2177,6 @@
 
     private bool AxisHasNegativeValues(string axisId)
     {
-        // Check selected tags mapped to this axis
         foreach (var tag in SelectedTags)
         {
             var cfg = SeriesConfigs.TryGetValue(tag, out var c) ? c : null;
@@ -2025,11 +2190,9 @@
             }
         }
 
-        // No negative values found for mapped series
         return false;
     }
 
-    // New: Move Y axis up/down in YAxisOrder
     private void MoveYAxisUp(string axisId)
     {
         var idx = YAxisOrder.IndexOf(axisId);
@@ -2157,12 +2320,10 @@
         if (string.IsNullOrEmpty(seriesName))
             return TooltipBackground ?? "#ffffff";
 
-        // seriesName here is the display name; try to find a matching config by display name
         var kv = SeriesConfigs.FirstOrDefault(k => (k.Value.Name ?? k.Key) == seriesName);
         if (!kv.Equals(default(KeyValuePair<string, SeriesConfiguration>)) && !string.IsNullOrEmpty(kv.Value?.Color))
             return kv.Value.Color;
 
-        // fallback: try if seriesName matches key/tag
         if (SeriesConfigs.TryGetValue(seriesName, out var cfg) && !string.IsNullOrEmpty(cfg.Color))
             return cfg.Color;
 
@@ -2200,6 +2361,23 @@
         _ => ChartTitleAlign.Center
     };
 
+    private void InvalidateChart()
+    {
+        _chartKey++;
+        StateHasChanged();
+    }
+
+    private void OnCustomChartTitleChanged(string? v)
+    {
+        bool hadTitle = !string.IsNullOrWhiteSpace(CustomChartTitle);
+        CustomChartTitle = v ?? "";
+        bool hasTitle = !string.IsNullOrWhiteSpace(CustomChartTitle);
+        if (hadTitle && !hasTitle)
+            InvalidateChart();
+        else
+            StateHasChanged();
+    }
+
     private object[] GetCategoryAxisCrossings()
     {
         var axes = GetDistinctYAxes();
@@ -2230,7 +2408,6 @@
 
     private async Task LoadDistinctTagsFromDb()
     {
-        // Populate TagOptions with a new list reference so the MultiSelect sees the change immediately
         await using var db = await DbFactory.CreateDbContextAsync();
 
         var tags = await db.SensorReadings
@@ -2241,14 +2418,12 @@
 
         TagOptions = tags.Select(t => new FieldOption { Text = t, Value = t }).ToList();
 
-        // don't auto-select; leave it to user. but ensure default axis exists
         if (!YAxisConfigs.Any())
         {
             YAxisConfigs["Axis 1"] = new YAxisConfiguration { Name = "Axis 1", Title = "Axis 1" };
             if (!YAxisOrder.Contains("Axis 1")) YAxisOrder.Add("Axis 1");
         }
 
-        // Force immediate UI update so the MultiSelect shows options without switching tabs
         await InvokeAsync(StateHasChanged);
     }
 
@@ -2270,8 +2445,14 @@
 
         await using var db = await DbFactory.CreateDbContextAsync();
 
-        ChartData = await db.SensorReadings
-            .Where(x => x.Time >= fetchMin && x.Time <= fetchMax)
+        // Filter by selected tags to avoid loading unrelated series
+        var query = db.SensorReadings
+            .Where(x => x.Time >= fetchMin && x.Time <= fetchMax);
+
+        if (SelectedTags.Any())
+            query = query.Where(x => SelectedTags.Contains(x.Tag));
+
+        ChartData = await query
             .OrderBy(x => x.Time)
             .ToListAsync();
 
@@ -2311,8 +2492,13 @@
 
         if (needsOlderData)
         {
-            var olderData = await db.SensorReadings
-                .Where(x => x.Time >= desiredMin && x.Time < memoryMin)
+            var olderQuery = db.SensorReadings
+                .Where(x => x.Time >= desiredMin && x.Time < memoryMin);
+
+            if (SelectedTags.Any())
+                olderQuery = olderQuery.Where(x => SelectedTags.Contains(x.Tag));
+
+            var olderData = await olderQuery
                 .OrderBy(x => x.Time)
                 .ToListAsync();
 
@@ -2322,8 +2508,13 @@
 
         if (needsNewerData)
         {
-            var newerData = await db.SensorReadings
-                .Where(x => x.Time > memoryMax && x.Time <= desiredMax)
+            var newerQuery = db.SensorReadings
+                .Where(x => x.Time > memoryMax && x.Time <= desiredMax);
+
+            if (SelectedTags.Any())
+                newerQuery = newerQuery.Where(x => SelectedTags.Contains(x.Tag));
+
+            var newerData = await newerQuery
                 .OrderBy(x => x.Time)
                 .ToListAsync();
 
@@ -2485,6 +2676,7 @@
     {
         _mouseDownX = args.ClientX;
         _isMouseDown = true;
+        _didDragInCurrentInteraction = false;
 
         if (IsLiveMode && !IsPaused)
         {
@@ -2524,6 +2716,7 @@
 
         _windowAnchorMax = newMax;
         _mouseDownX = args.ClientX;
+        _didDragInCurrentInteraction = true;
 
         await SlideWindowTo(newMax);
         StateHasChanged();
@@ -2532,14 +2725,18 @@
     private async Task OnChartMouseUp(MouseEventArgs args)
     {
         _isMouseDown = false;
-        if (IsPaused) _chartKey++;
+        if (IsPaused && _didDragInCurrentInteraction) _chartKey++;
+        _didDragInCurrentInteraction = false;
         await InvokeAsync(StateHasChanged);
     }
 
     private async Task OnChartMouseLeave(MouseEventArgs args)
     {
+        if (!_isMouseDown) return;
+
         _isMouseDown = false;
-        if (IsPaused) _chartKey++;
+        if (IsPaused && _didDragInCurrentInteraction) _chartKey++;
+        _didDragInCurrentInteraction = false;
         await InvokeAsync(StateHasChanged);
     }
 
@@ -2575,8 +2772,13 @@
                 {
                     await using var db = await DbFactory.CreateDbContextAsync();
 
-                    var newData = await db.SensorReadings
-                        .Where(x => x.Time > _lastLoadedTime)
+                    var newDataQuery = db.SensorReadings
+                        .Where(x => x.Time > _lastLoadedTime);
+
+                    if (SelectedTags.Any())
+                        newDataQuery = newDataQuery.Where(x => SelectedTags.Contains(x.Tag));
+
+                    var newData = await newDataQuery
                         .OrderBy(x => x.Time)
                         .ToListAsync();
 
@@ -2647,7 +2849,6 @@
         var isTrend = seriesDisplayName.EndsWith(trendSuffix);
         var baseDisplayName = isTrend ? seriesDisplayName[..^trendSuffix.Length] : seriesDisplayName;
 
-        // Try to map display name back to a tag key (SeriesConfigs key)
         var match = SeriesConfigs.FirstOrDefault(kv => (kv.Value.Name ?? kv.Key) == baseDisplayName);
         string tagKey = null;
 
@@ -2657,7 +2858,6 @@
         }
         else if (SeriesConfigs.ContainsKey(baseDisplayName))
         {
-            // fallback: displayName is the tag key
             tagKey = baseDisplayName;
         }
 
@@ -2685,7 +2885,6 @@
                 if (SeriesConfigs.ContainsKey(tagKey))
                     SeriesConfigs[tagKey].IsHidden = true;
 
-                // also hide trendline if present
                 if (SeriesConfigs.TryGetValue(tagKey, out var cfg) && cfg.ShowTrendline)
                     HiddenSeries.Add($"{tagKey}_trend");
             }
@@ -2749,13 +2948,10 @@
 
     private void ResetToDefaults()
     {
-        // Preserve existing axis keys and titles so user-created axes are not deleted
         var preservedAxisTitles = YAxisConfigs.ToDictionary(kv => kv.Key, kv => kv.Value.Title);
 
-        // Preserve existing series -> axis mappings so mappings survive reset
         var seriesAxisMap = SeriesConfigs.ToDictionary(kv => kv.Key, kv => kv.Value.AxisName);
 
-        // Clear series-level configuration then recreate defaults for the currently selected tags
         SeriesConfigs.Clear();
         SeriesRenameBuffers.Clear();
 
@@ -2770,7 +2966,7 @@
 
             SeriesConfigs[tag] = new SeriesConfiguration
             {
-                Name = "", // Reset display name so UI shows tag by default
+                Name = "",
                 ChartType = "Line",
                 Color = GetDefaultColor(i),
                 LineStyle = "Solid",
@@ -2795,7 +2991,6 @@
             };
         }
 
-        // Rebuild YAxisConfigs keeping the axis entries (names/titles) but reset their settings
         var existingAxisKeys = YAxisConfigs.Keys.ToList();
         YAxisConfigs.Clear();
         foreach (var key in existingAxisKeys)
@@ -2857,7 +3052,6 @@
         GlobalYAxisMin = null;
         GlobalYAxisMax = null;
 
-        // Ensure at least one axis remains
         if (!YAxisConfigs.Any())
         {
             YAxisConfigs["Axis 1"] = new YAxisConfiguration { Name = "Axis 1", Title = "Axis 1" };
@@ -2995,6 +3189,15 @@
         };
 
         return numericTypes.Contains(t);
+    }
+
+    // Return count of points in memory for currently selected tags (or total if none selected)
+    private int GetPointsInMemoryCount()
+    {
+        if (SelectedTags == null || !SelectedTags.Any())
+            return ChartData.Count;
+
+        return ChartData.Count(x => SelectedTags.Contains(x.Tag));
     }
 
     public void Dispose()
