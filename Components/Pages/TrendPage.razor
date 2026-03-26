@@ -37,6 +37,26 @@
                     <!-- ===== TAB 1: DATA ===== -->
                     <TabStripTab Title="Data">
                         <div class="config-section">
+
+
+                            <div class="config-row">
+                                <label>Data Mode</label>
+                                <div class="range-buttons">
+                                    <TelerikButton ThemeColor="@(IsHistoricalDataMode? ThemeColor.Base: ThemeColor.Primary)"
+                                                   Size="sm"
+                                                   OnClick="@(() => SetDataModeAsync(isHistorical: false))">
+                                        Live Data
+                                    </TelerikButton>
+
+                                    <TelerikButton ThemeColor="@(IsHistoricalDataMode? ThemeColor.Primary: ThemeColor.Base)"
+                                                   Size="sm"
+                                                   OnClick="@(() => SetDataModeAsync(isHistorical: true))">
+                                        Historical Data
+                                    </TelerikButton>
+                                </div>
+                            </div>
+
+                            <br />
                             <div class="section-title">
                                 <TelerikSvgIcon Icon="@SvgIcon.Table" /> Data Source (Tags)
                             </div>
@@ -53,30 +73,56 @@
                                                     AutoClose="false" />
                             </div>
 
-                            <div class="config-row">
-                                <label>Time Range</label>
-                                <div class="range-buttons">
-                                    @foreach (var range in RangePresets)
-                                    {
-                                        <TelerikButton ThemeColor="@(SelectedRange == range.Value ? ThemeColor.Primary : ThemeColor.Base)"
-                                                       Size="sm"
-                                                       OnClick="@(() => ChangeRange(range.Value))">
-                                            @range.Text
-                                        </TelerikButton>
-                                    }
+                            @if (!IsHistoricalDataMode)
+                            {
+                                <div class="config-row">
+                                    <label>Time Range</label>
+                                    <div class="range-buttons">
+                                        @foreach (var range in RangePresets)
+                                        {
+                                            <TelerikButton ThemeColor="@(SelectedRange == range.Value ? ThemeColor.Primary : ThemeColor.Base)"
+                                                           Size="sm"
+                                                           OnClick="@(() => ChangeRange(range.Value))">
+                                                @range.Text
+                                            </TelerikButton>
+                                        }
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div class="config-row">
-                                <label>
-                                    Refresh Interval:
-                                </label>
+                                <div class="config-row">
+                                    <label>
+                                        Refresh Interval:
+                                    </label>
 
-                                <TelerikDropDownList Data="@RefreshIntervalOptions"
-                                                     @bind-Value="RefreshIntervalMs"
-                                                     Width="100%" />
-                                <small class="text-muted">Current: <b>@RefreshIntervalMs ms</b></small>
-                            </div>
+                                    <TelerikDropDownList Data="@RefreshIntervalOptions"
+                                                         @bind-Value="RefreshIntervalMs"
+                                                         Width="100%" />
+                                    <small class="text-muted">Current: <b>@RefreshIntervalMs ms</b></small>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="config-row inline" style="gap: 16px;">
+                                    <div style="flex: 1;">
+                                        <label>From</label>
+                                        <input type="date"
+                                               class="form-control"
+                                               style="width: 100%;"
+                                               value="@HistoricalFromDate.ToString("yyyy-MM-dd")"
+                                               @onchange="OnHistoricalFromDateChanged" />
+                                    </div>
+
+                                    <div style="flex: 1;">
+                                        <label>To</label>
+                                        <input type="date"
+                                               class="form-control"
+                                               style="width: 100%;"
+                                               value="@HistoricalToDate.ToString("yyyy-MM-dd")"
+                                               @onchange="OnHistoricalToDateChanged" />
+                                    </div>
+                                </div>
+
+                            }
                         </div>
                     </TabStripTab>
 
@@ -1156,7 +1202,7 @@
 
         <WindowTitle>
             <div class="window-title-bar">
-                <span>📊 Live Trend Chart</span>
+                <span>📊 @(IsHistoricalDataMode ? "Historical Trend Chart" : "Live Trend Chart")</span>
             </div>
         </WindowTitle>
 
@@ -1170,7 +1216,7 @@
             <div class="mb-2 d-flex gap-2 align-items-center flex-wrap">
                 @if (ShowToolbar)
                 {
-                    @if (ShowPauseResumeButton)
+                    @if (ShowPauseResumeButton && !IsHistoricalDataMode)
                     {
                         <TelerikButton OnClick="@TogglePauseResume"
                                        ThemeColor="@(IsPaused ? ThemeColor.Success : ThemeColor.Warning)"
@@ -1279,7 +1325,7 @@
                     </ChartLegend>
 
                     <ChartZoomable Enabled="true">
-                        <ChartZoomableMousewheel Enabled="false" />
+                        <ChartZoomableMousewheel Enabled="true" />
                     </ChartZoomable>
 
                     <ChartPannable Enabled="true" />
@@ -1574,6 +1620,10 @@
 
     private int CategoryLabelRotation = -45;
     private string SelectedRange = "30s";
+    private bool IsHistoricalDataMode = false;
+    private string _liveSelectedRangeBackup = "30s";
+    private DateTime HistoricalFromDate = DateTime.Today.AddDays(-1);
+    private DateTime HistoricalToDate = DateTime.Today;
     private string SelectedStackType = "Normal";
     private string SelectedRenderMode = "Canvas";
     private string ChartBackground = "white";
@@ -1608,7 +1658,7 @@
     private List<string> TitleAlignOptions = new() { "Left", "Center", "Right" };
 
     // Backing field + property so dropdown changes immediately update timer interval
-    private int _refreshIntervalMs = 100;
+    private int _refreshIntervalMs = 1000;
     private int RefreshIntervalMs
     {
         get => _refreshIntervalMs;
@@ -1656,7 +1706,7 @@
     private DateTime? _windowAnchorMax;
 
     private const double BUFFER_MULTIPLIER = 1.0;
-    private const int MAX_MEMORY_POINTS = 10000;
+    private const int MAX_MEMORY_POINTS = 100000;
 
     private System.Timers.Timer _timer;
 
@@ -2114,13 +2164,21 @@
         foreach (var tag in SelectedTags)
             _ = GetSeriesConfig(tag);
 
-        DateTime anchor = DateTime.Now;
-        if (!IsLiveMode && _windowAnchorMax.HasValue)
-            anchor = _windowAnchorMax.Value;
-        else if (VisibleMax.HasValue)
-            anchor = VisibleMax.Value;
+        if (IsHistoricalDataMode)
+        {
+            var (min, max) = GetHistoricalWindow();
+            await LoadDataForExplicitWindow(min, max);
+        }
+        else
+        {
+            DateTime anchor = DateTime.Now;
+            if (!IsLiveMode && _windowAnchorMax.HasValue)
+                anchor = _windowAnchorMax.Value;
+            else if (VisibleMax.HasValue)
+                anchor = VisibleMax.Value;
 
-        await LoadDataForWindow(anchor);
+            await LoadDataForWindow(anchor);
+        }
 
         _chartKey++;
         await InvokeAsync(StateHasChanged);
@@ -2427,6 +2485,107 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    private (DateTime WindowMin, DateTime WindowMax) GetHistoricalWindow()
+    {
+        var fromDate = HistoricalFromDate.Date;
+        var toDate = HistoricalToDate.Date;
+
+        var minDate = fromDate <= toDate ? fromDate : toDate;
+        var maxDate = fromDate <= toDate ? toDate : fromDate;
+
+        // Inclusive end-of-day window max
+        return (minDate, maxDate.AddDays(1).AddTicks(-1));
+    }
+
+    private static DateTime ParseIsoDate(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return DateTime.Today;
+
+        return DateTime.ParseExact(value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private string GetRangePresetFromDurationSeconds(int seconds)
+    {
+        if (seconds <= 0) return "30s";
+
+        var presets = new List<(string Value, int Seconds)>
+        {
+            ("30s", 30),
+            ("1m", 60),
+            ("5m", 300),
+            ("10m", 600),
+            ("30m", 1800),
+            ("1h", 3600),
+            ("6h", 21600),
+            ("12h", 43200),
+            ("1d", 86400),
+        };
+
+        return presets.FirstOrDefault(p => seconds <= p.Seconds).Value ?? "1d";
+    }
+
+    private async Task SetDataModeAsync(bool isHistorical)
+    {
+        if (isHistorical)
+        {
+            if (!IsHistoricalDataMode)
+                _liveSelectedRangeBackup = SelectedRange;
+
+            IsHistoricalDataMode = true;
+            IsLiveMode = false;
+            IsPaused = false;
+            PausedByInteraction = false;
+            _windowAnchorMax = null;
+
+            await ApplyHistoricalRangeAsync();
+            return;
+        }
+
+        IsHistoricalDataMode = false;
+        SelectedRange = _liveSelectedRangeBackup;
+        IsLiveMode = true;
+        IsPaused = false;
+        PausedByInteraction = false;
+        _windowAnchorMax = null;
+
+        await LoadDataForWindow(DateTime.Now);
+        _chartKey++;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnHistoricalFromDateChanged(ChangeEventArgs e)
+    {
+        HistoricalFromDate = ParseIsoDate(e.Value?.ToString());
+
+        if (IsHistoricalDataMode)
+            await ApplyHistoricalRangeAsync();
+    }
+
+    private async Task OnHistoricalToDateChanged(ChangeEventArgs e)
+    {
+        HistoricalToDate = ParseIsoDate(e.Value?.ToString());
+
+        if (IsHistoricalDataMode)
+            await ApplyHistoricalRangeAsync();
+    }
+
+    private async Task ApplyHistoricalRangeAsync()
+    {
+        if (!IsHistoricalDataMode)
+            return;
+
+        var (windowMin, windowMax) = GetHistoricalWindow();
+
+        var durationSeconds = (int)Math.Ceiling((windowMax - windowMin).TotalSeconds);
+        SelectedRange = GetRangePresetFromDurationSeconds(durationSeconds);
+
+        await LoadDataForExplicitWindow(windowMin, windowMax);
+
+        _chartKey++;
+        await InvokeAsync(StateHasChanged);
+    }
+
     private async Task LoadDataForWindow(DateTime anchorMax)
     {
         int rangeSeconds = GetRangeSeconds();
@@ -2461,6 +2620,40 @@
 
         VisibleMin = windowMin;
         VisibleMax = windowMax;
+    }
+
+    private async Task LoadDataForExplicitWindow(DateTime windowMin, DateTime windowMax)
+    {
+        // For historical mode: use the exact From/To window (inclusive) provided by the user.
+        int rangeSeconds = (int)Math.Max(1, (windowMax - windowMin).TotalSeconds);
+        int bufferSeconds = (int)(rangeSeconds * BUFFER_MULTIPLIER);
+
+        DateTime fetchMin = windowMin.AddSeconds(-bufferSeconds);
+        DateTime fetchMax = windowMax.AddSeconds(bufferSeconds);
+
+        DateTime now = DateTime.Now;
+        if (fetchMax > now)
+            fetchMax = now;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var query = db.SensorReadings
+            .Where(x => x.Time >= fetchMin && x.Time <= fetchMax);
+
+        if (SelectedTags.Any())
+            query = query.Where(x => SelectedTags.Contains(x.Tag));
+
+        ChartData = await query
+            .OrderBy(x => x.Time)
+            .ToListAsync();
+
+        if (ChartData.Any())
+            _lastLoadedTime = ChartData.Max(x => x.Time);
+
+        VisibleMin = windowMin;
+        VisibleMax = windowMax;
+
+        TrimDataAroundWindow(windowMin, windowMax, bufferSeconds);
     }
 
     private async Task SlideWindowTo(DateTime newMax)
@@ -2657,8 +2850,25 @@
     //  MOUSE / WHEEL HANDLERS
     // ═══════════════════════════════════════════════════════
 
+    private void PauseLiveByInteraction()
+    {
+        if (!IsLiveMode || IsPaused) return;
+
+        IsPaused = true;
+        PausedByInteraction = true;
+        IsLiveMode = false;
+        _windowAnchorMax = VisibleMax;
+    }
+
     private async Task OnChartWheel(WheelEventArgs args)
     {
+        if (IsHistoricalDataMode) return;
+        if (IsLiveMode && !IsPaused)
+        {
+            PauseLiveByInteraction();
+            return;
+        }
+
         var now = DateTime.Now;
         if ((now - _lastWheelSlide) < WheelDebounce) return;
         _lastWheelSlide = now;
@@ -2674,21 +2884,17 @@
 
     private void OnChartMouseDown(MouseEventArgs args)
     {
+        if (IsHistoricalDataMode) return;
         _mouseDownX = args.ClientX;
         _isMouseDown = true;
         _didDragInCurrentInteraction = false;
 
-        if (IsLiveMode && !IsPaused)
-        {
-            IsPaused = true;
-            PausedByInteraction = true;
-            IsLiveMode = false;
-            _windowAnchorMax = VisibleMax;
-        }
+        PauseLiveByInteraction();
     }
 
     private async Task OnChartMouseMove(MouseEventArgs args)
     {
+        if (IsHistoricalDataMode) return;
         if (!_isMouseDown) return;
 
         var now = DateTime.Now;
@@ -2699,13 +2905,7 @@
 
         _lastDragSlide = now;
 
-        if (IsLiveMode && !IsPaused)
-        {
-            IsPaused = true;
-            PausedByInteraction = true;
-            IsLiveMode = false;
-            _windowAnchorMax = VisibleMax;
-        }
+        PauseLiveByInteraction();
 
         int stepSeconds = GetSlideStepSeconds();
         if (!VisibleMax.HasValue) return;
@@ -2823,6 +3023,8 @@
 
     private async Task ChangeRange(string range)
     {
+        if (IsHistoricalDataMode) return;
+
         SelectedRange = range;
         UpdateTimerInterval();
 
@@ -3024,6 +3226,14 @@
         HiddenSeries.Clear();
         XAxisConfig = new();
         SelectedRange = "30s";
+        IsHistoricalDataMode = false;
+        _liveSelectedRangeBackup = "30s";
+        HistoricalFromDate = DateTime.Today.AddDays(-1);
+        HistoricalToDate = DateTime.Today;
+        IsLiveMode = true;
+        IsPaused = false;
+        PausedByInteraction = false;
+        _windowAnchorMax = null;
         ShowLegend = true;
         ShowTooltip = true;
         SharedTooltip = true;
@@ -3038,9 +3248,9 @@
         TooltipBackground = "#e6e6e6";
         EnableTransitions = false;
         CustomChartTitle = "";
-        RefreshIntervalMs = 100;
+        RefreshIntervalMs = 1000;
 
-        ChartMarginTop = 8;
+        ChartMarginTop = 25;
         ChartMarginRight = 8;
         ChartMarginBottom = 8;
         ChartMarginLeft = 8;
@@ -3126,6 +3336,13 @@
 
     private string GetXAxisTitle()
     {
+        if (IsHistoricalDataMode)
+        {
+            var minDate = HistoricalFromDate.Date <= HistoricalToDate.Date ? HistoricalFromDate.Date : HistoricalToDate.Date;
+            var maxDate = HistoricalFromDate.Date <= HistoricalToDate.Date ? HistoricalToDate.Date : HistoricalFromDate.Date;
+            return $"Time — {minDate:dd-MM-yyyy} → {maxDate:dd-MM-yyyy}";
+        }
+
         var unitName = GetBaseUnit() switch
         {
             ChartCategoryAxisBaseUnit.Seconds => "Seconds",
